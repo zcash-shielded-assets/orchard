@@ -100,7 +100,7 @@ impl NonZeroPallasBase {
 
 /// An integer in [1..r_P].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct NonZeroPallasScalar(pallas::Scalar);
+pub struct NonZeroPallasScalar(pallas::Scalar);
 
 impl Default for NonZeroPallasScalar {
     fn default() -> Self {

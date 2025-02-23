@@ -130,6 +130,14 @@ impl MerklePath {
     }
 
     /// Instantiates a new Merkle path given a leaf position and authentication path.
+    pub fn empty() -> Self {
+        Self::from_parts(
+            0,
+            [MerkleHashOrchard(pallas::Base::ZERO); MERKLE_DEPTH_ORCHARD],
+        )
+    }
+
+    /// Instantiates a new Merkle path given a leaf position and authentication path.
     pub fn from_parts(position: u32, auth_path: [MerkleHashOrchard; MERKLE_DEPTH_ORCHARD]) -> Self {
         Self {
             position,
@@ -174,13 +182,18 @@ impl MerklePath {
 /// A newtype wrapper for leaves and internal nodes in the Orchard
 /// incremental note commitment tree.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct MerkleHashOrchard(pallas::Base);
+pub struct MerkleHashOrchard(pub(crate) pallas::Base);
 
 impl MerkleHashOrchard {
     /// Creates an incremental tree leaf digest from the specified
     /// Orchard extracted note commitment.
     pub fn from_cmx(value: &ExtractedNoteCommitment) -> Self {
         MerkleHashOrchard(value.inner())
+    }
+
+    /// Convert a field value into a hash
+    pub fn from_base(value: pallas::Base) -> Self {
+        MerkleHashOrchard(value)
     }
 
     /// Only used in the circuit.

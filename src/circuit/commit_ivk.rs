@@ -1,4 +1,3 @@
-//! Sub-circuit implementing the `CommitIvk` gadget.
 //!
 //! `CommitIvk` is the Sinsemilla-based commitment that binds an incoming
 //! viewing key `ivk` to the full viewing key `(ak, nk)` and the randomness
