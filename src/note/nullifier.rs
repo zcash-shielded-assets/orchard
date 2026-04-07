@@ -12,7 +12,7 @@ use crate::{
 
 /// A unique nullifier for a note.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Nullifier(pub(crate) pallas::Base);
+pub struct Nullifier(pub pallas::Base);
 
 // We know that `pallas::Base` doesn't allocate internally.
 memuse::impl_no_dynamic_usage!(Nullifier);
@@ -58,6 +58,29 @@ impl Nullifier {
         let k = pallas::Point::hash_to_curve("z.cash:Orchard")(b"K");
 
         Nullifier(extract_p(&(k * mod_r_p(nk.prf_nf(rho) + psi) + cm.0)))
+    }
+
+    /// Derives a domain-separated nullifier from the given key components.
+    ///
+    /// Like [`Nullifier::derive`], but incorporates `domain` into the PRF input
+    /// so that nullifiers in different domains are unlinkable.
+    pub(super) fn derive_domain(
+        nk: &NullifierDerivingKey,
+        domain: pallas::Base,
+        rho: pallas::Base,
+        psi: pallas::Base,
+        cm: NoteCommitment,
+    ) -> Self {
+        let k = pallas::Point::hash_to_curve("z.cash:Orchard")(b"K");
+
+        Nullifier(extract_p(
+            &(k * mod_r_p(nk.prf_nf_domain(rho, domain) + psi) + cm.0),
+        ))
+    }
+
+    /// Returns a zeroed nullifier (all bytes zero).
+    pub fn empty() -> Self {
+        Nullifier(pallas::Base::zero())
     }
 }
 

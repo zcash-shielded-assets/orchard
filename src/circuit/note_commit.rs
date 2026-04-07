@@ -1,3 +1,4 @@
+//! Note Commitment
 use core::iter;
 
 use group::ff::PrimeField;
@@ -1412,6 +1413,7 @@ impl YCanonicity {
     }
 }
 
+/// Configuration for the `NoteCommit` chip.
 #[allow(non_snake_case)]
 #[derive(Clone, Debug)]
 pub struct NoteCommitConfig {
@@ -1431,15 +1433,17 @@ pub struct NoteCommitConfig {
         SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
 }
 
+/// Chip implementing $\mathsf{NoteCommit}^\mathsf{Orchard}$ as defined in the Orchard protocol.
 #[derive(Clone, Debug)]
 pub struct NoteCommitChip {
     config: NoteCommitConfig,
 }
 
 impl NoteCommitChip {
+    /// Configures the `NoteCommit` chip, allocating advice columns and gate constraints.
     #[allow(non_snake_case)]
     #[allow(clippy::many_single_char_names)]
-    pub(in crate::circuit) fn configure(
+    pub fn configure(
         meta: &mut ConstraintSystem<pallas::Base>,
         advices: [Column<Advice>; 10],
         sinsemilla_config: SinsemillaConfig<
@@ -1558,20 +1562,25 @@ impl NoteCommitChip {
         }
     }
 
-    pub(in crate::circuit) fn construct(config: NoteCommitConfig) -> Self {
+    /// Constructs a `NoteCommitChip` from the given configuration.
+    pub fn construct(config: NoteCommitConfig) -> Self {
         Self { config }
     }
 }
 
-pub(in crate::circuit) mod gadgets {
+/// Gadgets for `NoteCommit`.
+pub mod gadgets {
     use halo2_proofs::circuit::{Chip, Value};
 
     use super::*;
 
+    /// $\mathsf{NoteCommit}^\mathsf{Orchard}$ from [Section 5.4.8.4 Sinsemilla commitments].
+    ///
+    /// [Section 5.4.8.4 Sinsemilla commitments]: https://zips.z.cash/protocol/protocol.pdf#concretesinsemillacommit
     #[allow(clippy::many_single_char_names)]
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::circuit) fn note_commit(
+    pub fn note_commit(
         mut layouter: impl Layouter<pallas::Base>,
         chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
         ecc_chip: EccChip<OrchardFixedBases>,

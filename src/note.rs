@@ -15,10 +15,12 @@ use crate::{
     Address,
 };
 
-pub(crate) mod commitment;
+/// Note commitment types.
+pub mod commitment;
 pub use self::commitment::{ExtractedNoteCommitment, NoteCommitment};
 
-pub(crate) mod nullifier;
+/// Nullifier types.
+pub mod nullifier;
 pub use self::nullifier::Nullifier;
 
 /// The randomness used to construct a note.
@@ -50,11 +52,13 @@ impl Rho {
     /// of the note being spent in the [`Action`] under construction.
     ///
     /// [`Action`]: crate::action::Action
-    pub(crate) fn from_nf_old(nf: Nullifier) -> Self {
+    /// Constructs `Rho` from the old note's nullifier.
+    pub fn from_nf_old(nf: Nullifier) -> Self {
         Rho(nf.0)
     }
 
-    pub(crate) fn into_inner(self) -> pallas::Base {
+    /// Returns the inner base field element.
+    pub fn into_inner(self) -> pallas::Base {
         self.0
     }
 }
@@ -64,7 +68,8 @@ impl Rho {
 pub struct RandomSeed([u8; 32]);
 
 impl RandomSeed {
-    pub(crate) fn random(rng: &mut impl RngCore, rho: &Rho) -> Self {
+    /// Generates a new random seed.
+    pub fn random(rng: &mut impl RngCore, rho: &Rho) -> Self {
         loop {
             let mut bytes = [0; 32];
             rng.fill_bytes(&mut bytes);
@@ -92,7 +97,8 @@ impl RandomSeed {
     /// Defined in [Zcash Protocol Spec § 4.7.3: Sending Notes (Orchard)][orchardsend].
     ///
     /// [orchardsend]: https://zips.z.cash/protocol/nu5.pdf#orchardsend
-    pub(crate) fn psi(&self, rho: &Rho) -> pallas::Base {
+    /// Returns the psi value for this seed.
+    pub fn psi(&self, rho: &Rho) -> pallas::Base {
         to_base(PrfExpand::PSI.with(&self.0, &rho.to_bytes()))
     }
 
@@ -108,7 +114,7 @@ impl RandomSeed {
     /// Defined in [Zcash Protocol Spec § 4.7.3: Sending Notes (Orchard)][orchardsend].
     ///
     /// [orchardsend]: https://zips.z.cash/protocol/nu5.pdf#orchardsend
-    fn esk(&self, rho: &Rho) -> NonZeroPallasScalar {
+    pub fn esk(&self, rho: &Rho) -> NonZeroPallasScalar {
         // We can't construct a RandomSeed for which this unwrap fails.
         self.esk_inner(rho).unwrap()
     }
@@ -116,7 +122,8 @@ impl RandomSeed {
     /// Defined in [Zcash Protocol Spec § 4.7.3: Sending Notes (Orchard)][orchardsend].
     ///
     /// [orchardsend]: https://zips.z.cash/protocol/nu5.pdf#orchardsend
-    pub(crate) fn rcm(&self, rho: &Rho) -> commitment::NoteCommitTrapdoor {
+    /// Returns the note commitment trapdoor for this seed.
+    pub fn rcm(&self, rho: &Rho) -> commitment::NoteCommitTrapdoor {
         commitment::NoteCommitTrapdoor(to_scalar(
             PrfExpand::ORCHARD_RCM.with(&self.0, &rho.to_bytes()),
         ))
@@ -205,7 +212,8 @@ impl Note {
     /// Defined in [Zcash Protocol Spec § 4.8.3: Dummy Notes (Orchard)][orcharddummynotes].
     ///
     /// [orcharddummynotes]: https://zips.z.cash/protocol/nu5.pdf#orcharddummynotes
-    pub(crate) fn dummy(
+    /// Generates a dummy note.
+    pub fn dummy(
         rng: &mut impl RngCore,
         rho: Option<Rho>,
     ) -> (SpendingKey, FullViewingKey, Self) {
@@ -239,7 +247,7 @@ impl Note {
     }
 
     /// Derives the ephemeral secret key for this note.
-    pub(crate) fn esk(&self) -> EphemeralSecretKey {
+    pub fn esk(&self) -> EphemeralSecretKey {
         EphemeralSecretKey(self.rseed.esk(&self.rho))
     }
 
@@ -284,6 +292,20 @@ impl Note {
     pub fn nullifier(&self, fvk: &FullViewingKey) -> Nullifier {
         Nullifier::derive(
             fvk.nk(),
+            self.rho.0,
+            self.rseed.psi(&self.rho),
+            self.commitment(),
+        )
+    }
+
+    /// Derives a domain-separated nullifier for this note.
+    ///
+    /// This incorporates `domain` into the nullifier derivation, producing nullifiers
+    /// that are distinct from the standard nullifier and from those in other domains.
+    pub fn nullifier_domain(&self, fvk: &FullViewingKey, domain: pallas::Base) -> Nullifier {
+        Nullifier::derive_domain(
+            fvk.nk(),
+            domain,
             self.rho.0,
             self.rseed.psi(&self.rho),
             self.commitment(),

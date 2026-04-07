@@ -58,9 +58,9 @@ use halo2_gadgets::{
     utilities::lookup_range_check::{LookupRangeCheck, LookupRangeCheckConfig},
 };
 
-mod commit_ivk;
+pub mod commit_ivk;
 pub mod gadget;
-mod note_commit;
+pub mod note_commit;
 
 pub use crate::Proof;
 

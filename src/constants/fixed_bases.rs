@@ -14,11 +14,17 @@ use halo2_gadgets::ecc::{
 #[cfg(feature = "circuit")]
 use pasta_curves::pallas;
 
+/// Precomputed windows and Z-values for $R^\mathsf{CommitIvk}$.
 pub mod commit_ivk_r;
+/// Precomputed windows and Z-values for $R^\mathsf{NoteCommit}$.
 pub mod note_commit_r;
+/// Precomputed windows and Z-values for the nullifier base $\mathcal{K}^\mathsf{Orchard}$.
 pub mod nullifier_k;
+/// Precomputed windows and Z-values for $\mathcal{G}^\mathsf{Orchard}$ (spend authorization).
 pub mod spend_auth_g;
+/// Precomputed windows and Z-values for $R^\mathsf{ValueCommit}$.
 pub mod value_commit_r;
+/// Precomputed windows and Z-values for $\mathcal{V}^\mathsf{Orchard}$ (value commitment).
 pub mod value_commit_v;
 
 /// SWU hash-to-curve personalization for the spending key base point and
@@ -54,12 +60,16 @@ pub const NUM_WINDOWS: usize =
 pub const NUM_WINDOWS_SHORT: usize =
     (L_VALUE + FIXED_BASE_WINDOW_SIZE - 1) / FIXED_BASE_WINDOW_SIZE;
 
+/// Sum type for Orchard fixed bases, covering full-width and short bases.
+///
+/// This enables shared functionality for full-width and short fixed-base scalar multiplication.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-// A sum type for both full-width and short bases. This enables us to use the
-// shared functionality of full-width and short fixed-base scalar multiplication.
 pub enum OrchardFixedBases {
+    /// A full-width scalar multiplication base.
     Full(OrchardFixedBasesFull),
+    /// The nullifier base point $\mathcal{K}^\mathsf{Orchard}$.
     NullifierK,
+    /// The value commitment generator $V^\mathsf{Orchard}$.
     ValueCommitV,
 }
 
@@ -81,12 +91,16 @@ impl From<NullifierK> for OrchardFixedBases {
     }
 }
 
-/// The Orchard fixed bases used in scalar mul with full-width scalars.
+/// The Orchard fixed bases used in scalar multiplication with full-width scalars.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum OrchardFixedBasesFull {
+    /// The IVK commitment randomness generator $R^\mathsf{CommitIvk}$.
     CommitIvkR,
+    /// The note commitment randomness generator $R^\mathsf{NoteCommit}$.
     NoteCommitR,
+    /// The value commitment randomness generator $R^\mathsf{ValueCommit}$.
     ValueCommitR,
+    /// The spend authorization key generator $\mathcal{G}^\mathsf{Orchard}$.
     SpendAuthG,
 }
 

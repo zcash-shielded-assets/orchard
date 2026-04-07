@@ -31,15 +31,16 @@ pub mod builder;
 pub mod bundle;
 #[cfg(feature = "circuit")]
 pub mod circuit;
-mod constants;
+pub mod constants;
 pub mod keys;
 pub mod note;
 pub mod note_encryption;
 pub mod pczt;
 pub mod primitives;
-mod spec;
+pub mod spec;
 pub mod tree;
 pub mod value;
+
 pub mod zip32;
 
 #[cfg(test)]

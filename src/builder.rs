@@ -230,10 +230,14 @@ impl std::error::Error for OutputError {}
 #[derive(Debug)]
 pub struct SpendInfo {
     pub(crate) dummy_sk: Option<SpendingKey>,
-    pub(crate) fvk: FullViewingKey,
-    pub(crate) scope: Scope,
-    pub(crate) note: Note,
-    pub(crate) merkle_path: MerklePath,
+    /// The full viewing key that owns this note.
+    pub fvk: FullViewingKey,
+    /// The scope of this spend.
+    pub scope: Scope,
+    /// The note being spent.
+    pub note: Note,
+    /// The Merkle path authenticating this note.
+    pub merkle_path: MerklePath,
 }
 
 impl SpendInfo {

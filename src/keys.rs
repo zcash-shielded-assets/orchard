@@ -226,10 +226,11 @@ impl SpendValidatingKey {
 /// [`Note`]: crate::note::Note
 /// [orchardkeycomponents]: https://zips.z.cash/protocol/nu5.pdf#orchardkeycomponents
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct NullifierDerivingKey(pallas::Base);
+pub struct NullifierDerivingKey(pallas::Base);
 
 impl NullifierDerivingKey {
-    pub(crate) fn inner(&self) -> pallas::Base {
+    /// Returns the inner base field element.
+    pub fn inner(&self) -> pallas::Base {
         self.0
     }
 }
@@ -245,12 +246,19 @@ impl NullifierDerivingKey {
         prf_nf(self.0, rho)
     }
 
+    pub(crate) fn prf_nf_domain(&self, domain: pallas::Base, rho: pallas::Base) -> pallas::Base {
+        let domain_rho = prf_nf(domain, rho);
+        prf_nf(self.0, domain_rho)
+    }
+
     /// Converts this nullifier deriving key to its serialized form.
-    pub(crate) fn to_bytes(self) -> [u8; 32] {
+    /// Converts this nullifier deriving key to its serialized form.
+    pub fn to_bytes(self) -> [u8; 32] {
         <[u8; 32]>::from(self.0)
     }
 
-    pub(crate) fn from_bytes(bytes: &[u8]) -> Option<Self> {
+    /// Parses from bytes.
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let nk_bytes = <[u8; 32]>::try_from(bytes).ok()?;
         let nk = pallas::Base::from_repr(nk_bytes).map(NullifierDerivingKey);
         if nk.is_some().into() {
@@ -267,7 +275,7 @@ impl NullifierDerivingKey {
 ///
 /// [orchardkeycomponents]: https://zips.z.cash/protocol/nu5.pdf#orchardkeycomponents
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct CommitIvkRandomness(pallas::Scalar);
+pub struct CommitIvkRandomness(pallas::Scalar);
 
 impl From<&SpendingKey> for CommitIvkRandomness {
     fn from(sk: &SpendingKey) -> Self {
@@ -276,16 +284,18 @@ impl From<&SpendingKey> for CommitIvkRandomness {
 }
 
 impl CommitIvkRandomness {
-    pub(crate) fn inner(&self) -> pallas::Scalar {
+    /// Returns the inner scalar.
+    pub fn inner(&self) -> pallas::Scalar {
         self.0
     }
 
-    /// Converts this nullifier deriving key to its serialized form.
-    pub(crate) fn to_bytes(self) -> [u8; 32] {
+    /// Converts this IVK commitment randomness to its serialized form.
+    pub fn to_bytes(self) -> [u8; 32] {
         <[u8; 32]>::from(self.0)
     }
 
-    pub(crate) fn from_bytes(bytes: &[u8]) -> Option<Self> {
+    /// Parses from bytes.
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let rivk_bytes = <[u8; 32]>::try_from(bytes).ok()?;
         let rivk = pallas::Scalar::from_repr(rivk_bytes).map(CommitIvkRandomness);
         if rivk.is_some().into() {
@@ -334,12 +344,13 @@ impl From<FullViewingKey> for SpendValidatingKey {
 }
 
 impl FullViewingKey {
-    pub(crate) fn nk(&self) -> &NullifierDerivingKey {
+    /// Returns the nullifier deriving key.
+    pub fn nk(&self) -> &NullifierDerivingKey {
         &self.nk
     }
 
     /// Returns either `rivk` or `rivk_internal` based on `scope`.
-    pub(crate) fn rivk(&self, scope: Scope) -> CommitIvkRandomness {
+    pub fn rivk(&self, scope: Scope) -> CommitIvkRandomness {
         match scope {
             Scope::External => self.rivk,
             Scope::Internal => {
@@ -745,7 +756,8 @@ impl AsRef<[u8; 32]> for OutgoingViewingKey {
 pub struct DiversifiedTransmissionKey(NonIdentityPallasPoint);
 
 impl DiversifiedTransmissionKey {
-    pub(crate) fn inner(&self) -> NonIdentityPallasPoint {
+    /// Returns the inner Pallas point.
+    pub fn inner(&self) -> NonIdentityPallasPoint {
         self.0
     }
 }
@@ -802,11 +814,17 @@ impl EphemeralSecretKey {
         NonZeroPallasScalar::from_bytes(bytes).map(EphemeralSecretKey)
     }
 
-    pub(crate) fn derive_public(&self, g_d: NonIdentityPallasPoint) -> EphemeralPublicKey {
+    /// Derives the ephemeral public key from the given diversified base point.
+    ///
+    /// Computes $\mathsf{KA}^\mathsf{Orchard}.\mathsf{Public}(\mathit{esk}, g_d)$.
+    pub fn derive_public(&self, g_d: NonIdentityPallasPoint) -> EphemeralPublicKey {
         EphemeralPublicKey(ka_orchard(&self.0, &g_d))
     }
 
-    pub(crate) fn agree(&self, pk_d: &DiversifiedTransmissionKey) -> SharedSecret {
+    /// Performs Orchard key agreement with the given diversified transmission key.
+    ///
+    /// Computes $\mathsf{KA}^\mathsf{Orchard}.\mathsf{Agree}(\mathit{esk}, \mathit{pk}_d)$.
+    pub fn agree(&self, pk_d: &DiversifiedTransmissionKey) -> SharedSecret {
         SharedSecret(ka_orchard(&self.0, &pk_d.0))
     }
 }
@@ -829,7 +847,8 @@ impl EphemeralPublicKey {
         NonIdentityPallasPoint::from_bytes(bytes).map(EphemeralPublicKey)
     }
 
-    pub(crate) fn to_bytes(&self) -> EphemeralKeyBytes {
+    /// Serializes this key to bytes.
+    pub fn to_bytes(&self) -> EphemeralKeyBytes {
         EphemeralKeyBytes(self.0.to_bytes())
     }
 
@@ -891,7 +910,7 @@ impl SharedSecret {
     /// Defined in [Zcash Protocol Spec § 5.4.5.6: Orchard Key Agreement][concreteorchardkdf].
     ///
     /// [concreteorchardkdf]: https://zips.z.cash/protocol/nu5.pdf#concreteorchardkdf
-    pub(crate) fn kdf_orchard(self, ephemeral_key: &EphemeralKeyBytes) -> Blake2bHash {
+    pub fn kdf_orchard(self, ephemeral_key: &EphemeralKeyBytes) -> Blake2bHash {
         Self::kdf_orchard_inner(self.0.to_affine(), ephemeral_key)
     }
 

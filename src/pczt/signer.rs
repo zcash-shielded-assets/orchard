@@ -1,11 +1,9 @@
 use core::fmt;
 
 use rand::{CryptoRng, RngCore};
+use reddsa::orchard::SpendAuth;
 
-use crate::{
-    keys::SpendAuthorizingKey,
-    primitives::redpallas::{self, SpendAuth},
-};
+use crate::{keys::SpendAuthorizingKey, primitives::redpallas};
 
 impl super::Action {
     /// Signs the Orchard spend with the given spend authorizing key.

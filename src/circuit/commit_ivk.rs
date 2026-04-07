@@ -1,3 +1,4 @@
+//! Commitment IVK
 use core::iter;
 
 use group::ff::{Field, PrimeField};
@@ -15,19 +16,22 @@ use halo2_gadgets::{
     utilities::{bool_check, RangeConstrained},
 };
 
+/// Configuration for the `CommitIvk` chip.
 #[derive(Clone, Debug)]
 pub struct CommitIvkConfig {
     q_commit_ivk: Selector,
     advices: [Column<Advice>; 10],
 }
 
+/// Chip implementing $\mathsf{Commit}^\mathsf{ivk}$ as defined in the Orchard protocol.
 #[derive(Clone, Debug)]
 pub struct CommitIvkChip {
     config: CommitIvkConfig,
 }
 
 impl CommitIvkChip {
-    pub(in crate::circuit) fn configure(
+    /// Configures the `CommitIvk` chip, allocating the required advice columns and selectors.
+    pub fn configure(
         meta: &mut ConstraintSystem<pallas::Base>,
         advices: [Column<Advice>; 10],
     ) -> CommitIvkConfig {
@@ -222,12 +226,14 @@ impl CommitIvkChip {
         config
     }
 
-    pub(in crate::circuit) fn construct(config: CommitIvkConfig) -> Self {
+    /// Constructs a `CommitIvkChip` from the given configuration.
+    pub fn construct(config: CommitIvkConfig) -> Self {
         Self { config }
     }
 }
 
-pub(in crate::circuit) mod gadgets {
+/// Gadgets for `CommitIvk`.
+pub mod gadgets {
     use halo2_gadgets::utilities::{
         lookup_range_check::{LookupRangeCheck, LookupRangeCheckConfig},
         RangeConstrained,
@@ -241,7 +247,7 @@ pub(in crate::circuit) mod gadgets {
     /// [Section 5.4.8.4 Sinsemilla commitments]: https://zips.z.cash/protocol/protocol.pdf#concretesinsemillacommit
     #[allow(non_snake_case)]
     #[allow(clippy::type_complexity)]
-    pub(in crate::circuit) fn commit_ivk(
+    pub fn commit_ivk(
         sinsemilla_chip: SinsemillaChip<
             OrchardHashDomains,
             OrchardCommitDomains,

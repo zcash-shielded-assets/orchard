@@ -1,6 +1,7 @@
 //! Constants used in the Orchard protocol.
 pub mod fixed_bases;
 pub mod sinsemilla;
+/// Utility functions used in constant generation.
 pub mod util;
 
 #[cfg(feature = "circuit")]

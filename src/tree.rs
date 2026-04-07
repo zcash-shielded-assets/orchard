@@ -68,7 +68,8 @@ impl Anchor {
         Anchor(MerkleHashOrchard::empty_root(Level::from(MERKLE_DEPTH_ORCHARD as u8)).0)
     }
 
-    pub(crate) fn inner(&self) -> pallas::Base {
+    /// Returns the inner base field element.
+    pub fn inner(&self) -> pallas::Base {
         self.0
     }
 
@@ -85,7 +86,7 @@ impl Anchor {
 
 /// The Merkle path from a leaf of the note commitment tree
 /// to its anchor.
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct MerklePath {
     position: u32,
     auth_path: [MerkleHashOrchard; MERKLE_DEPTH_ORCHARD],
@@ -126,6 +127,14 @@ impl MerklePath {
     /// Instantiates a new Merkle path given a leaf position and authentication path.
     pub(crate) fn new(position: u32, auth_path: [pallas::Base; MERKLE_DEPTH_ORCHARD]) -> Self {
         Self::from_parts(position, auth_path.map(MerkleHashOrchard))
+    }
+
+    /// Instantiates a new Merkle path given a leaf position and authentication path.
+    pub fn empty() -> Self {
+        Self::from_parts(
+            0,
+            [MerkleHashOrchard(pallas::Base::ZERO); MERKLE_DEPTH_ORCHARD],
+        )
     }
 
     /// Instantiates a new Merkle path given a leaf position and authentication path.
@@ -173,7 +182,7 @@ impl MerklePath {
 /// A newtype wrapper for leaves and internal nodes in the Orchard
 /// incremental note commitment tree.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct MerkleHashOrchard(pallas::Base);
+pub struct MerkleHashOrchard(pub(crate) pallas::Base);
 
 impl MerkleHashOrchard {
     /// Creates an incremental tree leaf digest from the specified
@@ -182,8 +191,13 @@ impl MerkleHashOrchard {
         MerkleHashOrchard(value.inner())
     }
 
+    /// Creates a `MerkleHashOrchard` directly from a raw base field element.
+    pub fn from_base(value: pallas::Base) -> Self {
+        MerkleHashOrchard(value)
+    }
+
     /// Only used in the circuit.
-    pub(crate) fn inner(&self) -> pallas::Base {
+    pub fn inner(&self) -> pallas::Base {
         self.0
     }
 

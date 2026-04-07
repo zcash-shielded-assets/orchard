@@ -100,7 +100,8 @@ impl std::error::Error for BalanceError {}
 pub struct NoteValue(u64);
 
 impl NoteValue {
-    pub(crate) fn zero() -> Self {
+    /// Returns a note value of zero.
+    pub fn zero() -> Self {
         // Default for u64 is zero.
         Default::default()
     }
@@ -250,7 +251,8 @@ impl TryFrom<ValueSum> for i64 {
 pub struct ValueCommitTrapdoor(pallas::Scalar);
 
 impl ValueCommitTrapdoor {
-    pub(crate) fn inner(&self) -> pallas::Scalar {
+    /// Returns the inner scalar.
+    pub fn inner(&self) -> pallas::Scalar {
         self.0
     }
 
@@ -297,12 +299,12 @@ impl<'a> Sum<&'a ValueCommitTrapdoor> for ValueCommitTrapdoor {
 
 impl ValueCommitTrapdoor {
     /// Generates a new value commitment trapdoor.
-    pub(crate) fn random(rng: impl RngCore) -> Self {
+    pub fn random(rng: impl RngCore) -> Self {
         ValueCommitTrapdoor(pallas::Scalar::random(rng))
     }
 
     /// Returns the zero trapdoor, which provides no blinding.
-    pub(crate) fn zero() -> Self {
+    pub fn zero() -> Self {
         ValueCommitTrapdoor(pallas::Scalar::zero())
     }
 
@@ -370,6 +372,16 @@ impl ValueCommitment {
         ValueCommitment(V * value + R * rcv.0)
     }
 
+    /// Derives a `ValueCommitment` by $\mathsf{ValueCommit^{Orchard}}$.
+    /// with rcv = 0
+    ///
+    /// Defined in [Zcash Protocol Spec § 5.4.8.3: Homomorphic Pedersen commitments (Sapling and Orchard)][concretehomomorphiccommit].
+    ///
+    /// [concretehomomorphiccommit]: https://zips.z.cash/protocol/nu5.pdf#concretehomomorphiccommit
+    pub fn derive_from_value(value: i64) -> Self {
+        ValueCommitment::derive(ValueSum::from_raw(value), ValueCommitTrapdoor::zero())
+    }
+
     pub(crate) fn into_bvk(self) -> redpallas::VerificationKey<Binding> {
         // TODO: impl From<pallas::Point> for redpallas::VerificationKey.
         self.0.to_bytes().try_into().unwrap()
@@ -386,7 +398,7 @@ impl ValueCommitment {
     }
 
     /// x-coordinate of this value commitment.
-    pub(crate) fn x(&self) -> pallas::Base {
+    pub fn x(&self) -> pallas::Base {
         if self.0 == pallas::Point::identity() {
             pallas::Base::zero()
         } else {
@@ -395,7 +407,7 @@ impl ValueCommitment {
     }
 
     /// y-coordinate of this value commitment.
-    pub(crate) fn y(&self) -> pallas::Base {
+    pub fn y(&self) -> pallas::Base {
         if self.0 == pallas::Point::identity() {
             pallas::Base::zero()
         } else {
