@@ -822,12 +822,14 @@ impl EphemeralSecretKey {
     }
 
     ///
-    pub fn derive_public(&self, g_d: NonIdentityPallasPoint) -> EphemeralPublicKey {
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
+    pub(crate) fn derive_public(&self, g_d: NonIdentityPallasPoint) -> EphemeralPublicKey {
         EphemeralPublicKey(ka_orchard(&self.0, &g_d))
     }
 
     ///
-    pub fn agree(&self, pk_d: &DiversifiedTransmissionKey) -> SharedSecret {
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
+    pub(crate) fn agree(&self, pk_d: &DiversifiedTransmissionKey) -> SharedSecret {
         SharedSecret(ka_orchard(&self.0, &pk_d.0))
     }
 }
@@ -850,6 +852,8 @@ impl EphemeralPublicKey {
         NonIdentityPallasPoint::from_bytes(bytes).map(EphemeralPublicKey)
     }
 
+    /// Converts this key to bytes.
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
     pub(crate) fn to_bytes(&self) -> EphemeralKeyBytes {
         EphemeralKeyBytes(self.0.to_bytes())
     }

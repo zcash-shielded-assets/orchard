@@ -36,6 +36,12 @@ pub struct Rho(pallas::Base);
 memuse::impl_no_dynamic_usage!(Rho);
 
 impl Rho {
+    /// Returns the inner Pallas base field element.
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
+    pub(crate) fn inner(&self) -> pallas::Base {
+        self.0
+    }
+
     /// Deserialize the rho value from a byte array.
     ///
     /// This should only be used in cases where the components of a `Note` are being serialized and
@@ -74,6 +80,8 @@ impl Rho {
 pub struct RandomSeed([u8; 32]);
 
 impl RandomSeed {
+    /// Generates a random seed for the given rho.
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
     pub(crate) fn random(rng: &mut impl RngCore, rho: &Rho) -> Self {
         loop {
             let mut bytes = [0; 32];
@@ -119,7 +127,7 @@ impl RandomSeed {
     /// Defined in [Zcash Protocol Spec § 4.7.3: Sending Notes (Orchard)][orchardsend].
     ///
     /// [orchardsend]: https://zips.z.cash/protocol/nu5.pdf#orchardsend
-    pub fn esk(&self, rho: &Nullifier) -> NonZeroPallasScalar {
+    pub fn esk(&self, rho: &Rho) -> NonZeroPallasScalar {
         // We can't construct a RandomSeed for which this unwrap fails.
         self.esk_inner(rho).unwrap()
     }

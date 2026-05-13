@@ -369,6 +369,30 @@ impl SpendInfo {
             proprietary: BTreeMap::new(),
         }
     }
+
+    /// Returns the note being spent.
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
+    pub(crate) fn note(&self) -> &Note {
+        &self.note
+    }
+
+    /// Returns the full viewing key.
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
+    pub(crate) fn fvk(&self) -> &FullViewingKey {
+        &self.fvk
+    }
+
+    /// Returns the Merkle path.
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
+    pub(crate) fn merkle_path(&self) -> &MerklePath {
+        &self.merkle_path
+    }
+
+    /// Returns the scope.
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
+    pub(crate) fn scope(&self) -> Scope {
+        self.scope
+    }
 }
 
 /// Information about a specific output to receive funds in an [`Action`].

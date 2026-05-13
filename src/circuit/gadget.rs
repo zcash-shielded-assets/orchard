@@ -4,10 +4,11 @@ use ff::Field;
 use pasta_curves::pallas;
 
 use super::{commit_ivk::CommitIvkChip, note_commit::NoteCommitChip, Config};
-use crate::{
-    constants::{OrchardCommitDomains, OrchardFixedBases, OrchardHashDomains},
-    note::AssetBase,
+use crate::constants::{
+    fixed_bases::OrchardBaseFieldBases, NullifierK, OrchardCommitDomains, OrchardFixedBases,
+    OrchardFixedBasesFull, OrchardHashDomains, ValueCommitV,
 };
+use crate::note::AssetBase;
 use halo2_gadgets::{
     ecc::chip::EccChip,
     poseidon::Pow5Chip as PoseidonChip,
@@ -132,6 +133,7 @@ where
 /// `ValueCommit^Orchard` from [Section 5.4.8.3 Homomorphic Pedersen commitments (Sapling and Orchard)].
 ///
 /// [Section 5.4.8.3 Homomorphic Pedersen commitments (Sapling and Orchard)]: https://zips.z.cash/protocol/protocol.pdf#concretehomomorphiccommit
+#[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
 pub(crate) fn value_commit_orchard<
     EccChip: EccInstructions<
         pallas::Affine,
@@ -189,7 +191,8 @@ where
 ///
 /// [Section 4.16: Note Commitments and Nullifiers]: https://zips.z.cash/protocol/protocol.pdf#commitmentsandnullifiers
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn derive_domain_nullifier<
+#[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
+pub(in crate::circuit) fn derive_domain_nullifier<
     PoseidonChip: PoseidonSpongeInstructions<pallas::Base, poseidon::P128Pow5T3, ConstantLength<2>, 3, 2>,
     AddChip: AddInstruction<pallas::Base>,
     EccChip: EccInstructions<
@@ -243,8 +246,9 @@ pub(crate) fn derive_domain_nullifier<
     // `product` = [poseidon_hash(nk, rho) + psi] NullifierK.
     //
     let product = {
-        let nullifier_k = FixedPointBaseField::from_inner(ecc_chip, NullifierK);
+        let nullifier_k = FixedPointBaseField::from_inner(ecc_chip, OrchardBaseFieldBases::from(NullifierK));
         nullifier_k.mul(
+            layouter.namespace(|| "[poseidon_output + psi] NullifierK"),
             scalar,
         )?
     };
@@ -255,6 +259,7 @@ pub(crate) fn derive_domain_nullifier<
         .map(|res| res.extract_p())
 }
 
-pub(crate) use crate::circuit::commit_ivk::gadgets::commit_ivk;
+#[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
+pub(in crate::circuit) use crate::circuit::commit_ivk::gadgets::commit_ivk;
 #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
 pub(in crate::circuit) use crate::circuit::note_commit::gadgets::note_commit;

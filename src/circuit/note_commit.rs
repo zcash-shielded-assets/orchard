@@ -1730,6 +1730,7 @@ impl YCanonicity {
 /// Sinsemilla configuration.
 #[allow(non_snake_case)]
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
 pub struct NoteCommitConfig<Lookup: PallasLookupRangeCheck> {
     b: DecomposeB<Lookup>,
     d: DecomposeD<Lookup>,

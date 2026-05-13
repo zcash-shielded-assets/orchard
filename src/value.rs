@@ -281,6 +281,8 @@ impl ValueCommitTrapdoor {
     /// The zero trapdoor, which provides no blinding.
     pub const ZERO: Self = ValueCommitTrapdoor(pallas::Scalar::ZERO);
 
+    /// Returns the inner Pallas scalar.
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
     pub(crate) fn inner(&self) -> pallas::Scalar {
         self.0
     }
@@ -328,11 +330,13 @@ impl<'a> Sum<&'a ValueCommitTrapdoor> for ValueCommitTrapdoor {
 
 impl ValueCommitTrapdoor {
     /// Generates a new value commitment trapdoor.
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
     pub(crate) fn random(rng: impl RngCore) -> Self {
         ValueCommitTrapdoor(pallas::Scalar::random(rng))
     }
 
     /// Returns the zero trapdoor, which provides no blinding.
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
     pub(crate) fn zero() -> Self {
         ValueCommitTrapdoor(pallas::Scalar::zero())
     }
@@ -340,11 +344,6 @@ impl ValueCommitTrapdoor {
     pub(crate) fn into_bsk(self) -> redpallas::SigningKey<Binding> {
         // TODO: impl From<pallas::Scalar> for redpallas::SigningKey.
         self.0.to_repr().try_into().unwrap()
-    }
-
-    /// Serialize this value commitment trapdoor
-    pub fn to_bytes(&self) -> [u8; 32] {
-        self.0.to_repr()
     }
 }
 
@@ -432,6 +431,7 @@ impl ValueCommitment {
     }
 
     /// x-coordinate of this value commitment.
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
     pub(crate) fn x(&self) -> pallas::Base {
         if self.0 == pallas::Point::identity() {
             pallas::Base::zero()
@@ -441,6 +441,7 @@ impl ValueCommitment {
     }
 
     /// y-coordinate of this value commitment.
+    #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
     pub(crate) fn y(&self) -> pallas::Base {
         if self.0 == pallas::Point::identity() {
             pallas::Base::zero()

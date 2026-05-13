@@ -1492,6 +1492,7 @@ dependencies = [
  "tracing",
  "visibility",
  "zcash_note_encryption",
+ "zcash_spec",
  "zip32",
 ]
 
