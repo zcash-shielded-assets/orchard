@@ -412,7 +412,7 @@ impl ValueCommitment {
     ///
     /// [concretehomomorphiccommit]: https://zips.z.cash/protocol/nu5.pdf#concretehomomorphiccommit
     pub fn derive_from_value(value: i64) -> Self {
-        ValueCommitment::derive(ValueSum::from_raw(value), ValueCommitTrapdoor::zero())
+        ValueCommitment::derive(ValueSum::from_raw(value), ValueCommitTrapdoor::ZERO, crate::note::AssetBase::zatoshi())
     }
 
     pub(crate) fn into_bvk(self) -> redpallas::VerificationKey<Binding> {

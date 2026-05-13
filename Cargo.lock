@@ -1486,6 +1486,7 @@ dependencies = [
  "serde",
  "serde_cbor",
  "serde_json",
+ "shardtree",
  "sinsemilla",
  "subtle",
  "thiserror 1.0.48",
@@ -2050,6 +2051,18 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "shardtree"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "359e552886ae54d1642091645980d83f7db465fd9b5b0248e3680713c1773388"
+dependencies = [
+ "bitflags 2.4.0",
+ "either",
+ "incrementalmerkletree",
+ "tracing",
 ]
 
 [[package]]

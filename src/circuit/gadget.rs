@@ -4,10 +4,7 @@ use ff::Field;
 use pasta_curves::pallas;
 
 use super::{commit_ivk::CommitIvkChip, note_commit::NoteCommitChip, Config};
-use crate::constants::{
-    fixed_bases::OrchardBaseFieldBases, NullifierK, OrchardCommitDomains, OrchardFixedBases,
-    OrchardFixedBasesFull, OrchardHashDomains, ValueCommitV,
-};
+use crate::constants::{OrchardCommitDomains, OrchardFixedBases, OrchardHashDomains};
 use crate::note::AssetBase;
 use halo2_gadgets::{
     ecc::chip::EccChip,
@@ -130,41 +127,6 @@ where
     )
 }
 
-/// `ValueCommit^Orchard` from [Section 5.4.8.3 Homomorphic Pedersen commitments (Sapling and Orchard)].
-///
-/// [Section 5.4.8.3 Homomorphic Pedersen commitments (Sapling and Orchard)]: https://zips.z.cash/protocol/protocol.pdf#concretehomomorphiccommit
-#[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-pub(crate) fn value_commit_orchard<
-    EccChip: EccInstructions<
-        pallas::Affine,
-        FixedPoints = OrchardFixedBases,
-        Var = AssignedCell<pallas::Base, pallas::Base>,
-    >,
->(
-    mut layouter: impl Layouter<pallas::Base>,
-    ecc_chip: EccChip,
-    v: ScalarFixedShort<pallas::Affine, EccChip>,
-    rcv: ScalarFixed<pallas::Affine, EccChip>,
-) -> Result<Point<pallas::Affine, EccChip>, plonk::Error> {
-    // commitment = [v] ValueCommitV
-    let (commitment, _) = {
-        let value_commit_v = FixedPointShort::from_inner(ecc_chip.clone(), ValueCommitV.into());
-        value_commit_v.mul(layouter.namespace(|| "[v] ValueCommitV"), v)?
-    };
-
-    // blind = [rcv] ValueCommitR
-    let (blind, _rcv) = {
-        let value_commit_r = OrchardFixedBasesFull::ValueCommitR;
-        let value_commit_r = FixedPoint::from_inner(ecc_chip, value_commit_r);
-
-        // [rcv] ValueCommitR
-        value_commit_r.mul(layouter.namespace(|| "[rcv] ValueCommitR"), rcv)?
-    };
-
-    // [v] ValueCommitV + [rcv] ValueCommitR
-    commitment.add(layouter.namespace(|| "cv"), &blind)
-}
-
 /// Witnesses split_flag.
 pub(in crate::circuit) fn assign_split_flag<F: Field>(
     layouter: impl Layouter<F>,
@@ -186,80 +148,3 @@ where
         }),
     )
 }
-
-/// `DeriveNullifier` from [Section 4.16: Note Commitments and Nullifiers].
-///
-/// [Section 4.16: Note Commitments and Nullifiers]: https://zips.z.cash/protocol/protocol.pdf#commitmentsandnullifiers
-#[allow(clippy::too_many_arguments)]
-#[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-pub(in crate::circuit) fn derive_domain_nullifier<
-    PoseidonChip: PoseidonSpongeInstructions<pallas::Base, poseidon::P128Pow5T3, ConstantLength<2>, 3, 2>,
-    AddChip: AddInstruction<pallas::Base>,
-    EccChip: EccInstructions<
-        pallas::Affine,
-        FixedPoints = OrchardFixedBases,
-        Var = AssignedCell<pallas::Base, pallas::Base>,
-    >,
->(
-    mut layouter: impl Layouter<pallas::Base>,
-    poseidon_chip_1: PoseidonChip,
-    poseidon_chip_2: PoseidonChip,
-    add_chip: AddChip,
-    ecc_chip: EccChip,
-    domain: AssignedCell<pallas::Base, pallas::Base>,
-    rho: AssignedCell<pallas::Base, pallas::Base>,
-    psi: &AssignedCell<pallas::Base, pallas::Base>,
-    cm: &Point<pallas::Affine, EccChip>,
-    nk: AssignedCell<pallas::Base, pallas::Base>,
-) -> Result<X<pallas::Affine, EccChip>, plonk::Error> {
-    // domain_rho = poseidon_hash(domain, rho)
-    let domain_rho = {
-        let poseidon_message = [rho, domain];
-        let poseidon_hasher =
-            PoseidonHash::init(poseidon_chip_1, layouter.namespace(|| "Poseidon init"))?;
-        poseidon_hasher.hash(
-            layouter.namespace(|| "Poseidon hash (domain, rho)"),
-            poseidon_message,
-        )
-    }?;
-
-    // hash = poseidon_hash(nk, domain_rho)
-    let hash = {
-        let poseidon_message = [nk, domain_rho];
-        let poseidon_hasher =
-            PoseidonHash::init(poseidon_chip_2, layouter.namespace(|| "Poseidon init"))?;
-        poseidon_hasher.hash(
-            layouter.namespace(|| "Poseidon hash (nk, domain_rho)"),
-            poseidon_message,
-        )
-    }?;
-
-    // Add hash output to psi.
-    // `scalar` = poseidon_hash(nk, rho) + psi.
-    let scalar = add_chip.add(
-        layouter.namespace(|| "scalar = poseidon_hash(nk, rho) + psi"),
-        &hash,
-        psi,
-    )?;
-
-    // Multiply scalar by NullifierK
-    // `product` = [poseidon_hash(nk, rho) + psi] NullifierK.
-    //
-    let product = {
-        let nullifier_k = FixedPointBaseField::from_inner(ecc_chip, OrchardBaseFieldBases::from(NullifierK));
-        nullifier_k.mul(
-            layouter.namespace(|| "[poseidon_output + psi] NullifierK"),
-            scalar,
-        )?
-    };
-
-    // Add cm to multiplied fixed base to get nf
-    // cm + [poseidon_output + psi] NullifierK
-    cm.add(layouter.namespace(|| "nf"), &product)
-        .map(|res| res.extract_p())
-}
-
-#[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-pub(in crate::circuit) use crate::circuit::commit_ivk::gadgets::commit_ivk;
-#[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-pub(in crate::circuit) use crate::circuit::note_commit::gadgets::note_commit;

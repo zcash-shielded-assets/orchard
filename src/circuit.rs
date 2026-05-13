@@ -787,7 +787,7 @@ mod tests {
 
         use super::super::Instance;
         use crate::{
-            note::{AssetBase, ExtractedNoteCommitment, Nullifier},
+            note::{ExtractedNoteCommitment, Nullifier},
             primitives::redpallas::{self, SpendAuth},
             tree::Anchor,
             value::{ValueCommitTrapdoor, ValueCommitment, ValueSum},
