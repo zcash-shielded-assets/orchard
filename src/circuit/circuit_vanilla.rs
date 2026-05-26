@@ -821,7 +821,7 @@ mod tests {
                 rk,
                 cmx,
                 Flags::from_parts(enable_spend, enable_output, enable_zsa),
-            );
+            ).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid instance"))?;
 
             let mut proof_bytes = vec![];
             r.read_to_end(&mut proof_bytes)?;

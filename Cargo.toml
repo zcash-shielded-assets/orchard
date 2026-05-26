@@ -1,12 +1,12 @@
 [package]
 name = "orchard"
-version = "0.12.0"
+version = "0.13.1"
 authors = [
-    "Sean Bowe",
-    "Jack Grigg <jack@electriccoin.co>",
+    "Sean Bowe <ewillbefull@gmail.com>",
+    "Jack Grigg <thestr4d@gmail.com>",
     "Daira-Emma Hopwood <daira@jacaranda.org>",
     "Ying Tong Lai",
-    "Kris Nuttycombe <kris@electriccoin.co>",
+    "Kris Nuttycombe <kris@nutty.land>",
 ]
 edition = "2021"
 rust-version = "1.85.1"
@@ -87,6 +87,7 @@ default = ["circuit", "multicore", "std"]
 std = ["corez/std", "group/wnaf-memuse", "reddsa/std"]
 circuit = ["dep:halo2_gadgets", "dep:halo2_proofs", "std"]
 unstable-frost = []
+unstable-voting-circuits = []
 multicore = ["halo2_proofs?/multicore"]
 dev-graph = ["halo2_proofs?/dev-graph", "image", "plotters"]
 test-dependencies = ["proptest", "rand/std"]

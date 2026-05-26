@@ -15,7 +15,9 @@ pub(in crate::circuit) mod gadgets {
 
     use crate::{
         circuit::gadget::AddInstruction,
-        constants::{NullifierK, OrchardFixedBases},
+        constants::{
+            fixed_bases::OrchardBaseFieldBases, OrchardFixedBases,
+        },
     };
     use halo2_gadgets::{
         ecc::{chip::EccPoint, EccInstructions, FixedPointBaseField, Point, X},
@@ -72,7 +74,7 @@ pub(in crate::circuit) mod gadgets {
         // Multiply scalar by NullifierK
         // `product` = [poseidon_hash(nk, rho) + psi] NullifierK.
         let product = {
-            let nullifier_k = FixedPointBaseField::from_inner(ecc_chip.clone(), NullifierK);
+            let nullifier_k = FixedPointBaseField::from_inner(ecc_chip.clone(), OrchardBaseFieldBases::NullifierK);
             nullifier_k.mul(
                 layouter.namespace(|| "[poseidon_output + psi] NullifierK"),
                 scalar,

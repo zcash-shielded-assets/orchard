@@ -100,10 +100,10 @@ impl std::error::Error for BalanceError {}
 pub struct NoteValue(u64);
 
 impl NoteValue {
-    pub(crate) fn zero() -> Self {
-        // Default for u64 is zero.
-        Default::default()
-    }
+    /// The zero note value.
+    ///
+    /// Equivalent to `NoteValue::from_raw(0)`.
+    pub const ZERO: Self = NoteValue(0);
 
     /// Returns the raw underlying value.
     pub fn inner(&self) -> u64 {
@@ -200,7 +200,6 @@ impl ValueSum {
     /// `ValueCommitment::derive`, which takes a `ValueSum` as input. In order to avoid duplicating
     /// the `ValueSum` construction logic between Zebra and Orchard, Zebra must be able to create a
     /// `ValueSum` directly.
-    #[cfg(feature = "temporary-zebra")]
     pub fn from_raw(value: i64) -> Self {
         Self::from_raw_inner(value)
     }
@@ -279,6 +278,9 @@ impl TryFrom<ValueSum> for i64 {
 pub struct ValueCommitTrapdoor(pallas::Scalar);
 
 impl ValueCommitTrapdoor {
+    /// The zero trapdoor, which provides no blinding.
+    pub const ZERO: Self = ValueCommitTrapdoor(pallas::Scalar::ZERO);
+
     pub(crate) fn inner(&self) -> pallas::Scalar {
         self.0
     }
@@ -320,7 +322,7 @@ impl Add<&ValueCommitTrapdoor> for ValueCommitTrapdoor {
 
 impl<'a> Sum<&'a ValueCommitTrapdoor> for ValueCommitTrapdoor {
     fn sum<I: Iterator<Item = &'a ValueCommitTrapdoor>>(iter: I) -> Self {
-        iter.fold(ValueCommitTrapdoor::zero(), |acc, cv| acc + cv)
+        iter.fold(ValueCommitTrapdoor::ZERO, |acc, cv| acc + cv)
     }
 }
 
@@ -589,13 +591,13 @@ mod tests {
             .sum::<ValueCommitment>()
             - ValueCommitment::derive(
                 zatoshi_value_balance,
-                ValueCommitTrapdoor::zero(),
+                ValueCommitTrapdoor::ZERO,
                 AssetBase::zatoshi(),
             )
             - arb_values_to_burn
                 .iter()
                 .map(|(value, _, asset)| {
-                    ValueCommitment::derive(*value, ValueCommitTrapdoor::zero(), *asset)
+                    ValueCommitment::derive(*value, ValueCommitTrapdoor::ZERO, *asset)
                 })
                 .sum::<ValueCommitment>())
         .into_bvk();

@@ -460,7 +460,7 @@ impl OrchardCircuit for OrchardZSA {
                 //   v_old - v_new if split_flag = false
                 let v_net = split_flag_value.and_then(|split_flag| {
                     if split_flag {
-                        Value::known(crate::value::NoteValue::zero()) - circuit.v_new
+                        Value::known(crate::value::NoteValue::ZERO) - circuit.v_new
                     } else {
                         circuit.v_old - circuit.v_new
                     }
@@ -1074,7 +1074,7 @@ mod tests {
                 rk,
                 cmx,
                 Flags::from_parts(enable_spend, enable_output, enable_zsa),
-            );
+            ).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid instance"))?;
 
             let mut proof_bytes = vec![];
             r.read_to_end(&mut proof_bytes)?;
@@ -1199,7 +1199,7 @@ mod tests {
                 Scope::External,
                 // Split notes do not contribute to v_net.
                 // Therefore, if split_flag is true, v_net = - output_value
-                NoteValue::zero() - output_value,
+                NoteValue::ZERO - output_value,
             )
         } else {
             (

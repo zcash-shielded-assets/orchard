@@ -246,7 +246,7 @@ mod tests {
             let note = Note::from_parts(recipient, value, asset, rho, rseed).unwrap();
             assert_eq!(ExtractedNoteCommitment::from(note.commitment()), cmx);
 
-            let action = Action::from_parts(
+            let action_opt = Action::from_parts(
                 // nf_old is the nullifier revealed by the receiving Action.
                 nf_old,
                 // We don't need a valid rk for this test.
@@ -260,6 +260,7 @@ mod tests {
                 cv_net.clone(),
                 (),
             );
+            let action = action_opt.as_ref().expect("dummy vk should be valid for tests");
 
             //
             // Test decryption
@@ -268,7 +269,7 @@ mod tests {
 
             let domain = OrchardDomain::for_rho(rho);
 
-            match try_note_decryption(&domain, &ivk, &action) {
+            match try_note_decryption(&domain, &ivk, action) {
                 Some((decrypted_note, decrypted_to, decrypted_memo)) => {
                     assert_eq!(decrypted_note, note);
                     assert_eq!(decrypted_to, recipient);
@@ -277,7 +278,7 @@ mod tests {
                 None => panic!("Note decryption failed"),
             }
 
-            match try_compact_note_decryption(&domain, &ivk, &CompactAction::from(&action)) {
+            match try_compact_note_decryption(&domain, &ivk, &CompactAction::from(action)) {
                 Some((decrypted_note, decrypted_to)) => {
                     assert_eq!(decrypted_note, note);
                     assert_eq!(decrypted_to, recipient);
@@ -285,7 +286,7 @@ mod tests {
                 None => panic!("Compact note decryption failed"),
             }
 
-            match try_output_recovery_with_ovk(&domain, &ovk, &action, &cv_net, &tv.c_out) {
+            match try_output_recovery_with_ovk(&domain, &ovk, action, &cv_net, &tv.c_out) {
                 Some((decrypted_note, decrypted_to, decrypted_memo)) => {
                     assert_eq!(decrypted_note, note);
                     assert_eq!(decrypted_to, recipient);

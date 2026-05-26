@@ -316,7 +316,7 @@ impl SpendInfo {
     }
 
     fn has_matching_anchor(&self, anchor: &Anchor) -> bool {
-        if self.note.value() == NoteValue::zero() {
+        if self.note.value() == NoteValue::ZERO {
             true
         } else {
             let cm = self.note.commitment();
@@ -406,7 +406,7 @@ impl OutputInfo {
         let fvk: FullViewingKey = (&SpendingKey::random(rng)).into();
         let recipient = fvk.address_at(0u32, Scope::External);
 
-        Self::new(None, recipient, NoteValue::zero(), asset, [0u8; 512])
+        Self::new(None, recipient, NoteValue::ZERO, asset, [0u8; 512])
     }
 
     /// Builds the output half of an action.
@@ -495,7 +495,7 @@ impl ActionInfo {
     /// Split notes do not contribute to the value sum.
     fn value_sum(&self) -> ValueSum {
         let spent_value = if self.spend.split_flag {
-            NoteValue::zero()
+            NoteValue::ZERO
         } else {
             self.spend.note.value()
         };
@@ -530,7 +530,8 @@ impl ActionInfo {
                     dummy_ask: self.spend.dummy_sk.as_ref().map(SpendAuthorizingKey::from),
                     parts: SigningParts { ak, alpha },
                 },
-            ),
+            )
+            .expect("α was generated randomly, so an identity rk is vanishingly unlikely"),
             Witnesses::from_action_context_unchecked::<FL>(self.spend, note, alpha, self.rcv),
         )
     }
@@ -744,12 +745,12 @@ impl Builder {
             .spends
             .iter()
             .filter(|spend| spend.note.asset().is_zatoshi().into())
-            .map(|spend| spend.note.value() - NoteValue::zero())
+            .map(|spend| spend.note.value() - NoteValue::ZERO)
             .chain(
                 self.outputs
                     .iter()
                     .filter(|output| output.asset.is_zatoshi().into())
-                    .map(|output| NoteValue::zero() - output.value),
+                    .map(|output| NoteValue::ZERO - output.value),
             )
             .try_fold(ValueSum::zero(), |acc, note_value| acc + note_value)
             .ok_or(BalanceError::Overflow)?;

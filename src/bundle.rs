@@ -41,16 +41,15 @@ impl<A, Pr: OrchardPrimitives> Action<A, Pr> {
     /// Prepares the public instance for this action, for creating and verifying the
     /// bundle proof.
     pub fn to_instance(&self, flags: Flags, anchor: Anchor) -> Instance {
-        Instance {
+        Instance::from_parts(
             anchor,
-            cv_net: self.cv_net().clone(),
-            nf_old: *self.nullifier(),
-            rk: self.rk().clone(),
-            cmx: *self.cmx(),
-            enable_spend: flags.spends_enabled,
-            enable_output: flags.outputs_enabled,
-            enable_zsa: flags.zsa_enabled,
-        }
+            self.cv_net().clone(),
+            *self.nullifier(),
+            self.rk().clone(),
+            *self.cmx(),
+            flags,
+        )
+        .expect("this Action's rk is non-identity by construction (Action::from_parts)")
     }
 }
 
@@ -474,7 +473,7 @@ pub(crate) fn derive_bvk_raw<'a>(
     (cv_nets.into_iter().sum::<ValueCommitment>()
         - ValueCommitment::derive(
             value_balance,
-            ValueCommitTrapdoor::zero(),
+            ValueCommitTrapdoor::ZERO,
             AssetBase::zatoshi(),
         )
         - burn
@@ -482,7 +481,7 @@ pub(crate) fn derive_bvk_raw<'a>(
             .map(|(asset, value)| {
                 ValueCommitment::derive(
                     ValueSum::from_magnitude_sign(value.inner(), Sign::Positive),
-                    ValueCommitTrapdoor::zero(),
+                    ValueCommitTrapdoor::ZERO,
                     *asset,
                 )
             })
@@ -662,14 +661,14 @@ pub mod testing {
             let spend_value_gen = if flags.spends_enabled {
                 Strategy::boxed(arb_note_value_bounded(MAX_NOTE_VALUE / n_actions as u64))
             } else {
-                Strategy::boxed(Just(NoteValue::zero()))
+                Strategy::boxed(Just(NoteValue::ZERO))
             };
 
             spend_value_gen.prop_flat_map(move |spend_value| {
                 let output_value_gen = if flags.outputs_enabled {
                     Strategy::boxed(arb_note_value_bounded(MAX_NOTE_VALUE / n_actions as u64))
                 } else {
-                    Strategy::boxed(Just(NoteValue::zero()))
+                    Strategy::boxed(Just(NoteValue::ZERO))
                 };
 
                 output_value_gen.prop_flat_map(move |output_value| {
@@ -690,14 +689,14 @@ pub mod testing {
             let spend_value_gen = if flags.spends_enabled {
                 Strategy::boxed(arb_note_value_bounded(MAX_NOTE_VALUE / n_actions as u64))
             } else {
-                Strategy::boxed(Just(NoteValue::zero()))
+                Strategy::boxed(Just(NoteValue::ZERO))
             };
 
             spend_value_gen.prop_flat_map(move |spend_value| {
                 let output_value_gen = if flags.outputs_enabled {
                     Strategy::boxed(arb_note_value_bounded(MAX_NOTE_VALUE / n_actions as u64))
                 } else {
-                    Strategy::boxed(Just(NoteValue::zero()))
+                    Strategy::boxed(Just(NoteValue::ZERO))
                 };
 
                 output_value_gen.prop_flat_map(move |output_value| {

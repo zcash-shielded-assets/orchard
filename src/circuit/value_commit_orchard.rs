@@ -19,7 +19,9 @@ pub struct ZsaValueCommitParams<Lookup: PallasLookupRangeCheck> {
 pub(in crate::circuit) mod gadgets {
     use super::*;
 
-    use crate::constants::{OrchardFixedBasesFull, ValueCommitV};
+    use crate::constants::{
+        fixed_bases::OrchardShortScalarBases, OrchardFixedBasesFull,
+    };
 
     use halo2_gadgets::{
         ecc::{FixedPoint, FixedPointShort, Point, ScalarFixed, ScalarFixedShort, ScalarVar},
@@ -56,7 +58,7 @@ pub(in crate::circuit) mod gadgets {
 
                 // commitment = [v_net] ValueCommitV
                 let (commitment, _) = {
-                    let value_commit_v = ValueCommitV;
+                    let value_commit_v = OrchardShortScalarBases::ValueCommitV;
                     let value_commit_v =
                         FixedPointShort::from_inner(ecc_chip.clone(), value_commit_v);
                     value_commit_v.mul(layouter.namespace(|| "[v] ValueCommitV"), v_net)?
@@ -287,7 +289,7 @@ mod tests {
                     //   v_old - v_new if split_flag = false
                     let v_net = self.split_flag.and_then(|split_flag| {
                         if split_flag {
-                            Value::known(crate::value::NoteValue::zero()) - self.v_new
+                            Value::known(crate::value::NoteValue::ZERO) - self.v_new
                         } else {
                             self.v_old - self.v_new
                         }
@@ -363,7 +365,7 @@ mod tests {
                 let v_new = NoteValue::from_raw(rng.next_u64());
                 let rcv = ValueCommitTrapdoor::random(&mut rng);
                 let v_net = if split_flag {
-                    NoteValue::zero() - v_new
+                    NoteValue::ZERO - v_new
                 } else {
                     v_old - v_new
                 };

@@ -76,6 +76,7 @@ impl<Lookup: PallasLookupRangeCheck> Config<Lookup> {
 }
 
 /// An instruction set for adding two circuit words (field elements).
+#[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
 pub(in crate::circuit) trait AddInstruction<F: Field>: Chip<F> {
     /// Constraints `a + b` and returns the sum.
     fn add(
@@ -91,6 +92,7 @@ pub(in crate::circuit) trait AddInstruction<F: Field>: Chip<F> {
 /// Usages of this helper are technically superfluous, as the single-cell region is only
 /// ever used in equality constraints. We could eliminate them with a
 /// [write-on-copy abstraction](https://github.com/zcash/halo2/issues/334).
+#[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
 pub(in crate::circuit) fn assign_free_advice<F: Field, V: Copy>(
     mut layouter: impl Layouter<F>,
     column: Column<Advice>,
@@ -148,3 +150,6 @@ where
         }),
     )
 }
+
+pub(in crate::circuit) use crate::circuit::commit_ivk::gadgets::commit_ivk;
+pub(in crate::circuit) use crate::circuit::note_commit::gadgets::note_commit;
