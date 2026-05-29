@@ -14,7 +14,7 @@ use zcash_note_encryption::NoteEncryption;
 use crate::{
     address::Address,
     bundle::{burn_validation::BurnError, Authorization, Authorized, Bundle, Flags},
-    flavor::OrchardVanilla,
+    flavor::{OrchardVanilla, OrchardZSA},
     keys::{
         FullViewingKey, OutgoingViewingKey, Scope, SpendAuthorizingKey, SpendValidatingKey,
         SpendingKey,
@@ -349,7 +349,6 @@ impl SpendInfo {
 
     fn into_pczt(self, rng: impl RngCore) -> crate::pczt::Spend {
         assert!(!self.split_flag);
-        assert_eq!(self.note.asset(), AssetBase::zatoshi());
 
         let (nf_old, _, alpha, rk) = self.build(rng);
 
@@ -359,6 +358,7 @@ impl SpendInfo {
             spend_auth_sig: None,
             recipient: Some(self.note.recipient()),
             value: Some(self.note.value()),
+            asset: Some(self.note.asset()),
             rho: Some(self.note.rho()),
             rseed: Some(*self.note.rseed()),
             fvk: Some(self.fvk),
@@ -462,27 +462,46 @@ impl OutputInfo {
 
     fn into_pczt(
         self,
+        flags: Flags,
         cv_net: &ValueCommitment,
         nf_old: Nullifier,
-        rng: impl RngCore,
+        mut rng: impl RngCore,
     ) -> crate::pczt::Output {
-        assert_eq!(self.asset, AssetBase::zatoshi());
-
-        let (note, cmx, encrypted_note) = self.build::<OrchardVanilla>(cv_net, nf_old, rng);
+        let asset = self.asset;
+        // Use ZSA flavor when the bundle has ZSA enabled, or when the
+        // asset is non-zatoshi. This ensures all outputs in a ZSA bundle
+        // have consistent 612-byte ciphertexts, including padding dummies.
+        let is_zsa = flags.zsa_enabled() || !bool::from(asset.is_zatoshi());
+        let (note, cmx, ephemeral_key, enc_ciphertext, out_ciphertext) = if is_zsa {
+            Self::build_output_pczt::<OrchardZSA>(&self, cv_net, nf_old, &mut rng)
+        } else {
+            Self::build_output_pczt::<OrchardVanilla>(&self, cv_net, nf_old, &mut rng)
+        };
 
         crate::pczt::Output {
             cmx,
-            encrypted_note,
+            ephemeral_key,
+            enc_ciphertext,
+            out_ciphertext,
+            asset,
             recipient: Some(self.recipient),
             value: Some(self.value),
             rseed: Some(*note.rseed()),
-            // TODO: Extract ock from the encryptor and save it so
-            // Signers can check `out_ciphertext`.
             ock: None,
             zip32_derivation: None,
             user_address: None,
             proprietary: BTreeMap::new(),
         }
+    }
+
+    fn build_output_pczt<Pr: OrchardPrimitives>(
+        &self,
+        cv_net: &ValueCommitment,
+        nf_old: Nullifier,
+        rng: &mut impl RngCore,
+    ) -> (Note, ExtractedNoteCommitment, [u8; 32], Vec<u8>, [u8; 80]) {
+        let (note, cmx, en) = self.build::<Pr>(cv_net, nf_old, rng);
+        (note, cmx, en.epk_bytes, en.enc_ciphertext.as_ref().to_vec(), en.out_ciphertext)
     }
 }
 
@@ -560,12 +579,12 @@ impl ActionInfo {
         )
     }
 
-    fn build_for_pczt(self, mut rng: impl RngCore) -> crate::pczt::Action {
+    fn build_for_pczt(self, flags: Flags, mut rng: impl RngCore) -> crate::pczt::Action {
         let v_net = self.value_sum();
         let cv_net = ValueCommitment::derive(v_net, self.rcv.clone(), self.spend.note.asset());
 
         let spend = self.spend.into_pczt(&mut rng);
-        let output = self.output.into_pczt(&cv_net, spend.nullifier, &mut rng);
+        let output = self.output.into_pczt(flags, &cv_net, spend.nullifier, &mut rng);
 
         crate::pczt::Action {
             cv_net,
@@ -814,11 +833,12 @@ impl Builder {
             self.spends,
             self.outputs,
             self.burn,
-            |pre_actions, flags, value_sum, _burn_vec, bundle_meta, mut rng| {
-                // Create the actions.
+            |pre_actions, flags, value_sum, burn_vec, bundle_meta, mut rng| {
+                // Create the actions with bundle flags so that ZSA outputs
+                // are built with the correct ciphertext size.
                 let actions = pre_actions
                     .into_iter()
-                    .map(|a| a.build_for_pczt(&mut rng))
+                    .map(|a| a.build_for_pczt(flags, &mut rng))
                     .collect::<Vec<_>>();
 
                 Ok((
@@ -829,6 +849,7 @@ impl Builder {
                         anchor: self.anchor,
                         zkproof: None,
                         bsk: None,
+                        burn: burn_vec,
                     },
                     bundle_meta,
                 ))

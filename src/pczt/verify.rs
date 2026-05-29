@@ -2,7 +2,7 @@ use core::fmt;
 
 use crate::{
     keys::{FullViewingKey, SpendValidatingKey},
-    note::{AssetBase, ExtractedNoteCommitment, Rho},
+    note::{ExtractedNoteCommitment, Rho},
     value::ValueCommitment,
     Note,
 };
@@ -22,7 +22,7 @@ impl super::Action {
             .clone()
             .ok_or(VerifyError::MissingValueCommitTrapdoor)?;
 
-        let cv_net = ValueCommitment::derive(spend_value - output_value, rcv, AssetBase::zatoshi());
+        let cv_net = ValueCommitment::derive(spend_value - output_value, rcv, self.output().asset);
         if cv_net.to_bytes() == self.cv_net.to_bytes() {
             Ok(())
         } else {
@@ -71,7 +71,7 @@ impl super::Spend {
         let note = Note::from_parts(
             self.recipient.ok_or(VerifyError::MissingRecipient)?,
             self.value.ok_or(VerifyError::MissingValue)?,
-            AssetBase::zatoshi(),
+            self.asset.unwrap_or(crate::note::AssetBase::zatoshi()),
             self.rho.ok_or(VerifyError::MissingRho)?,
             self.rseed.ok_or(VerifyError::MissingRandomSeed)?,
         )
@@ -130,7 +130,7 @@ impl super::Output {
         let note = Note::from_parts(
             self.recipient.ok_or(VerifyError::MissingRecipient)?,
             self.value.ok_or(VerifyError::MissingValue)?,
-            AssetBase::zatoshi(),
+            self.asset,
             Rho::from_nf_old(spend.nullifier),
             self.rseed.ok_or(VerifyError::MissingRandomSeed)?,
         )
