@@ -68,13 +68,25 @@ impl super::Spend {
     ) -> Result<(), VerifyError> {
         let fvk = self.fvk_for_validation(expected_fvk)?;
 
-        let note = Note::from_parts(
-            self.recipient.ok_or(VerifyError::MissingRecipient)?,
-            self.value.ok_or(VerifyError::MissingValue)?,
-            self.asset.unwrap_or(crate::note::AssetBase::zatoshi()),
-            self.rho.ok_or(VerifyError::MissingRho)?,
-            self.rseed.ok_or(VerifyError::MissingRandomSeed)?,
-        )
+        let rseed = self.rseed.ok_or(VerifyError::MissingRandomSeed)?;
+        let note = if let Some(rsn) = self.rseed_split_note {
+            Note::from_parts_internal(
+                self.recipient.ok_or(VerifyError::MissingRecipient)?,
+                self.value.ok_or(VerifyError::MissingValue)?,
+                self.asset.unwrap_or(crate::note::AssetBase::zatoshi()),
+                self.rho.ok_or(VerifyError::MissingRho)?,
+                rseed,
+                subtle::CtOption::new(rsn, 1u8.into()),
+            )
+        } else {
+            Note::from_parts(
+                self.recipient.ok_or(VerifyError::MissingRecipient)?,
+                self.value.ok_or(VerifyError::MissingValue)?,
+                self.asset.unwrap_or(crate::note::AssetBase::zatoshi()),
+                self.rho.ok_or(VerifyError::MissingRho)?,
+                rseed,
+            )
+        }
         .into_option()
         .ok_or(VerifyError::InvalidSpendNote)?;
 

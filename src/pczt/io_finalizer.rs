@@ -38,7 +38,7 @@ impl super::Bundle {
                 .map(|a| a.cv_net().clone())
                 .collect::<Vec<_>>(),
             self.value_sum,
-            &[],
+            &self.burn,
         );
         if redpallas::VerificationKey::from(&bsk) != bvk {
             return Err(IoFinalizerError::ValueCommitMismatch);

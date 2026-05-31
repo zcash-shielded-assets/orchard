@@ -611,6 +611,8 @@ pub type UnauthorizedBundle<V, P> = Bundle<InProgress<Unproven, Unauthorized>, V
 pub struct BundleMetadata {
     spend_indices: Vec<usize>,
     output_indices: Vec<usize>,
+    /// Post-shuffle action indices of ZSA split spends (padding).
+    split_spend_indices: Vec<usize>,
 }
 
 impl BundleMetadata {
@@ -618,6 +620,7 @@ impl BundleMetadata {
         BundleMetadata {
             spend_indices: vec![0; num_requested_spends],
             output_indices: vec![0; num_requested_outputs],
+            split_spend_indices: vec![],
         }
     }
 
@@ -648,6 +651,17 @@ impl BundleMetadata {
     /// first action in the bundle.
     pub fn output_action_index(&self, n: usize) -> Option<usize> {
         self.output_indices.get(n).copied()
+    }
+
+    /// Returns the index within the bundle of the `n`-th ZSA split spend (padding).
+    /// Returns `None` if `n` is out of bounds.
+    pub fn split_spend_action_index(&self, n: usize) -> Option<usize> {
+        self.split_spend_indices.get(n).copied()
+    }
+
+    /// Returns the number of ZSA split spends in the bundle.
+    pub fn num_split_spends(&self) -> usize {
+        self.split_spend_indices.len()
     }
 }
 
@@ -1113,7 +1127,12 @@ fn build_bundle<B, R: RngCore>(
                 // Record the post-randomization spend location
                 if let Some(spend_idx) = spend_idx {
                     bundle_meta.spend_indices[spend_idx] = action_idx;
+                } else if spend.split_flag {
+                    // Padding split spend (ZSA): record for signing
+                    bundle_meta.split_spend_indices.push(action_idx);
                 }
+                // Note: padding ZEC dummies (dummy_sk, !split_flag) are
+                // intentionally not recorded — the IoFinalizer signs them.
 
                 // Record the post-randomization output location
                 if let Some(out_idx) = out_idx {

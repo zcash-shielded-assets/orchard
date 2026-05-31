@@ -6,8 +6,8 @@ use rand::{CryptoRng, RngCore};
 use super::Action;
 use crate::{
     bundle::{Authorization, Authorized, EffectsOnly},
-    flavor::OrchardVanilla,
-    primitives::redpallas::{self, Binding, SpendAuth},
+    flavor::{OrchardVanilla, OrchardZSA},
+    primitives::{redpallas::{self, Binding, SpendAuth}, OrchardPrimitives},
     sighash_kind::{OrchardBindingSig, OrchardSighashKind, OrchardSpendAuthSig},
     Proof,
 };
@@ -21,6 +21,18 @@ impl super::Bundle {
     pub fn extract_effects<V: TryFrom<i64>>(
         &self,
     ) -> Result<Option<crate::Bundle<EffectsOnly, V, OrchardVanilla>>, TxExtractorError> {
+        self.to_tx_data(|_| Ok(()), |_| Ok(EffectsOnly))
+    }
+
+    /// Extracts the effects of this PCZT bundle as a ZSA [regular `Bundle`].
+    ///
+    /// This is used by the Signer and IO Finalizer roles when the bundle
+    /// has ZSA flags enabled.
+    ///
+    /// [regular `Bundle`]: crate::Bundle
+    pub fn extract_effects_zsa<V: TryFrom<i64>>(
+        &self,
+    ) -> Result<Option<crate::Bundle<EffectsOnly, V, OrchardZSA>>, TxExtractorError> {
         self.to_tx_data(|_| Ok(()), |_| Ok(EffectsOnly))
     }
 
@@ -55,14 +67,44 @@ impl super::Bundle {
         )
     }
 
+    /// Extracts a fully authorized ZSA [regular `Bundle`] from this PCZT bundle.
+    ///
+    /// [regular `Bundle`]: crate::Bundle
+    pub fn extract_zsa<V: TryFrom<i64>>(
+        &self,
+    ) -> Result<Option<crate::Bundle<Unbound, V, OrchardZSA>>, TxExtractorError> {
+        self.to_tx_data(
+            |action| {
+                action
+                    .spend
+                    .spend_auth_sig
+                    .clone()
+                    .ok_or(TxExtractorError::MissingSpendAuthSig)
+            },
+            |bundle| {
+                Ok(Unbound {
+                    proof: bundle
+                        .zkproof
+                        .clone()
+                        .ok_or(TxExtractorError::MissingProof)?,
+                    bsk: bundle
+                        .bsk
+                        .clone()
+                        .ok_or(TxExtractorError::MissingBindingSignatureSigningKey)?,
+                })
+            },
+        )
+    }
+
     /// Converts this PCZT bundle into a regular bundle with the given authorizations.
-    fn to_tx_data<A, V, E, F, G>(
+    fn to_tx_data<A, V, Pr, E, F, G>(
         &self,
         action_auth: F,
         bundle_auth: G,
-    ) -> Result<Option<crate::Bundle<A, V, OrchardVanilla>>, E>
+    ) -> Result<Option<crate::Bundle<A, V, Pr>>, E>
     where
         A: Authorization,
+        Pr: OrchardPrimitives,
         E: From<TxExtractorError>,
         F: Fn(&Action) -> Result<<A as Authorization>::SpendAuth, E>,
         G: FnOnce(&Self) -> Result<A, E>,
@@ -74,11 +116,16 @@ impl super::Bundle {
             .map(|action| {
                 let authorization = action_auth(action)?;
 
+                let encrypted_note = action
+                    .output
+                    .encrypted_note::<Pr>()
+                    .ok_or(TxExtractorError::InvalidEncCiphertext)?;
+
                 crate::Action::from_parts(
                     action.spend.nullifier,
                     action.spend.rk.clone(),
                     action.output.cmx,
-                    action.output.encrypted_note.clone(),
+                    encrypted_note,
                     action.cv_net.clone(),
                     authorization,
                 )
@@ -98,7 +145,7 @@ impl super::Bundle {
                 actions,
                 self.flags,
                 value_balance,
-                vec![], //No burn in PCZT V1
+                self.burn.clone(),
                 self.anchor,
                 authorization,
             ))
@@ -112,6 +159,8 @@ impl super::Bundle {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum TxExtractorError {
+    /// An action's enc_ciphertext has an unexpected length.
+    InvalidEncCiphertext,
     /// The Transaction Extractor role requires `bsk` to be set.
     MissingBindingSignatureSigningKey,
     /// The Transaction Extractor role requires `zkproof` to be set.
@@ -128,6 +177,9 @@ pub enum TxExtractorError {
 impl fmt::Display for TxExtractorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            TxExtractorError::InvalidEncCiphertext => {
+                write!(f, "enc_ciphertext has an unexpected length")
+            }
             TxExtractorError::MissingBindingSignatureSigningKey => {
                 write!(f, "`bsk` must be set for the Transaction Extractor role")
             }
@@ -172,6 +224,39 @@ impl<V> crate::Bundle<Unbound, V, OrchardVanilla> {
         sighash: [u8; 32],
         rng: R,
     ) -> Option<crate::Bundle<Authorized, V, OrchardVanilla>> {
+        if self
+            .actions()
+            .iter()
+            .all(|action| action.rk().verify(&sighash, action.authorization()).is_ok())
+        {
+            Some(self.map_authorization(
+                &mut (),
+                |_, _, a| OrchardSpendAuthSig::new(OrchardSighashKind::AllEffecting, a),
+                |_, Unbound { proof, bsk }| {
+                    Authorized::from_parts(
+                        proof,
+                        OrchardBindingSig::new(
+                            OrchardSighashKind::AllEffecting,
+                            bsk.sign(rng, &sighash),
+                        ),
+                    )
+                },
+            ))
+        } else {
+            None
+        }
+    }
+}
+
+impl<V> crate::Bundle<Unbound, V, OrchardZSA> {
+    /// Verifies the given sighash with every `spend_auth_sig`, and then binds the ZSA bundle.
+    ///
+    /// Returns `None` if the given sighash does not validate against every `spend_auth_sig`.
+    pub fn apply_binding_signature<R: RngCore + CryptoRng>(
+        self,
+        sighash: [u8; 32],
+        rng: R,
+    ) -> Option<crate::Bundle<Authorized, V, OrchardZSA>> {
         if self
             .actions()
             .iter()

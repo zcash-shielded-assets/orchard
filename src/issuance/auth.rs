@@ -207,8 +207,9 @@ impl IssueAuthKey<ZSASchnorr> {
         Self(secret_key)
     }
 
-    fn to_bytes(&self) -> Vec<u8> {
-        self.0.secret_bytes().to_vec()
+    /// Serialize the issuance authorizing key to its raw byte representation.
+    pub fn to_bytes(&self) -> [u8; 32] {
+        self.0.secret_bytes()
     }
 
     /// Deserialize the issuance authorization signature from its canonical byte representation.
@@ -245,6 +246,16 @@ impl From<&IssueAuthKey<ZSASchnorr>> for IssueValidatingKey<ZSASchnorr> {
 }
 
 impl IssueValidatingKey<ZSASchnorr> {
+    /// Returns the raw 32-byte x-only public key.
+    pub fn to_bytes(&self) -> [u8; 32] {
+        self.0.serialize()
+    }
+
+    /// Deserializes the issuance validating key from its raw 32-byte representation.
+    pub fn from_bytes(bytes: &[u8; 32]) -> Option<Self> {
+        XOnlyPublicKey::from_slice(bytes).ok().map(Self)
+    }
+
     /// Encodes the issuance validating key into a byte vector, in the manner defined in [ZIP 227][issuancekeycomponents].
     ///
     /// [issuancekeycomponents]: https://zips.z.cash/zip-0227#derivation-of-issuance-validating-key

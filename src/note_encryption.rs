@@ -274,20 +274,6 @@ impl<T> ShieldedOutput<OrchardDomain, ENC_CIPHERTEXT_SIZE> for Action<T> {
     }
 }
 
-impl ShieldedOutput<OrchardDomain, ENC_CIPHERTEXT_SIZE> for crate::pczt::Action {
-    fn ephemeral_key(&self) -> EphemeralKeyBytes {
-        EphemeralKeyBytes(self.output().encrypted_note().epk_bytes)
-    }
-
-    fn cmstar_bytes(&self) -> [u8; 32] {
-        self.output().cmx().to_bytes()
-    }
-
-    fn enc_ciphertext(&self) -> &[u8; ENC_CIPHERTEXT_SIZE] {
-        &self.output().encrypted_note().enc_ciphertext
-    }
-}
-
 /// A compact Action for light clients.
 #[derive(Clone)]
 pub struct CompactAction {
