@@ -121,6 +121,8 @@ impl Spend {
         asset: Option<[u8; 32]>,
         rho: Option<[u8; 32]>,
         rseed: Option<[u8; 32]>,
+        rseed_split_note: Option<[u8; 32]>,
+        split_flag: bool,
         fvk: Option<[u8; 96]>,
         witness: Option<(u32, [[u8; 32]; NOTE_COMMITMENT_TREE_DEPTH])>,
         alpha: Option<[u8; 32]>,
@@ -164,6 +166,15 @@ impl Spend {
             .map(|rseed| {
                 let rho = rho.as_ref().ok_or(ParseError::MissingRho)?;
                 RandomSeed::from_bytes(rseed, rho)
+                    .into_option()
+                    .ok_or(ParseError::InvalidRandomSeed)
+            })
+            .transpose()?;
+
+        let rseed_split_note = rseed_split_note
+            .map(|rsn| {
+                let rho = rho.as_ref().ok_or(ParseError::MissingRho)?;
+                RandomSeed::from_bytes(rsn, rho)
                     .into_option()
                     .ok_or(ParseError::InvalidRandomSeed)
             })
@@ -213,6 +224,8 @@ impl Spend {
             asset,
             rho,
             rseed,
+            rseed_split_note,
+            split_flag,
             fvk,
             witness,
             alpha,

@@ -348,8 +348,6 @@ impl SpendInfo {
     }
 
     fn into_pczt(self, rng: impl RngCore) -> crate::pczt::Spend {
-        assert!(!self.split_flag);
-
         let (nf_old, _, alpha, rk) = self.build(rng);
 
         crate::pczt::Spend {
@@ -361,6 +359,8 @@ impl SpendInfo {
             asset: Some(self.note.asset()),
             rho: Some(self.note.rho()),
             rseed: Some(*self.note.rseed()),
+            rseed_split_note: self.note.rseed_split_note().into_option(),
+            split_flag: self.split_flag,
             fvk: Some(self.fvk),
             witness: Some(self.merkle_path),
             alpha: Some(alpha),

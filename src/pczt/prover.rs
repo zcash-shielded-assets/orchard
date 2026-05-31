@@ -8,8 +8,8 @@ use rand::{CryptoRng, RngCore};
 use crate::{
     builder::SpendInfo,
     circuit::{Circuit, Instance, ProvingKey, Witnesses},
-    flavor::OrchardVanilla,
-    note::{AssetBase, Rho},
+    flavor::{OrchardVanilla, OrchardZSA},
+    note::Rho,
     Note, Proof,
 };
 
@@ -27,7 +27,10 @@ impl super::Bundle {
             return Ok(());
         }
 
-        let circuits = self
+        let is_zsa = self.flags.zsa_enabled();
+
+        // Collect witnesses for all actions
+        let witnesses = self
             .actions
             .iter()
             .map(|action| {
@@ -37,16 +40,26 @@ impl super::Bundle {
                     .clone()
                     .ok_or(ProverError::MissingFullViewingKey)?;
 
-                let note = Note::from_parts(
-                    action
-                        .spend
-                        .recipient
-                        .ok_or(ProverError::MissingRecipient)?,
-                    action.spend.value.ok_or(ProverError::MissingValue)?,
-                    AssetBase::zatoshi(),
-                    action.spend.rho.ok_or(ProverError::MissingRho)?,
-                    action.spend.rseed.ok_or(ProverError::MissingRandomSeed)?,
-                )
+                let rseed = action.spend.rseed.ok_or(ProverError::MissingRandomSeed)?;
+                let rho = action.spend.rho.ok_or(ProverError::MissingRho)?;
+                let recipient = action
+                    .spend
+                    .recipient
+                    .ok_or(ProverError::MissingRecipient)?;
+                let value = action.spend.value.ok_or(ProverError::MissingValue)?;
+
+                let note = if let Some(rsn) = action.spend.rseed_split_note {
+                    Note::from_parts_internal(
+                        recipient,
+                        value,
+                        action.output.asset,
+                        rho,
+                        rseed,
+                        subtle::CtOption::new(rsn, 1u8.into()),
+                    )
+                } else {
+                    Note::from_parts(recipient, value, action.output.asset, rho, rseed)
+                }
                 .into_option()
                 .ok_or(ProverError::InvalidSpendNote)?;
 
@@ -56,8 +69,17 @@ impl super::Bundle {
                     .clone()
                     .ok_or(ProverError::MissingWitness)?;
 
-                let spend =
-                    SpendInfo::new(fvk, note, merkle_path).ok_or(ProverError::WrongFvkForNote)?;
+                let scope = fvk
+                    .scope_for_address(&note.recipient())
+                    .ok_or(ProverError::WrongFvkForNote)?;
+                let spend = SpendInfo {
+                    dummy_sk: None,
+                    fvk,
+                    scope,
+                    note,
+                    merkle_path,
+                    split_flag: action.spend.split_flag,
+                };
 
                 let output_note = Note::from_parts(
                     action
@@ -65,7 +87,7 @@ impl super::Bundle {
                         .recipient
                         .ok_or(ProverError::MissingRecipient)?,
                     action.output.value.ok_or(ProverError::MissingValue)?,
-                    AssetBase::zatoshi(),
+                    action.output.asset,
                     Rho::from_nf_old(action.spend.nullifier),
                     action.output.rseed.ok_or(ProverError::MissingRandomSeed)?,
                 )
@@ -81,12 +103,8 @@ impl super::Bundle {
                     .clone()
                     .ok_or(ProverError::MissingValueCommitTrapdoor)?;
 
-                Witnesses::from_action_context::<OrchardVanilla>(spend, output_note, alpha, rcv)
+                Witnesses::from_action_context::<OrchardZSA>(spend, output_note, alpha, rcv)
                     .ok_or(ProverError::RhoMismatch)
-                    .map(|witnesses| Circuit::<OrchardVanilla> {
-                        witnesses,
-                        phantom: core::marker::PhantomData,
-                    })
             })
             .collect::<Result<Vec<_>, ProverError>>()?;
 
@@ -106,8 +124,13 @@ impl super::Bundle {
             })
             .collect::<Result<Vec<_>, ProverError>>()?;
 
-        let proof =
-            Proof::create(pk, &circuits, &instances, rng).map_err(ProverError::ProofFailed)?;
+        let proof = if is_zsa {
+            let circuits: Vec<_> = witnesses.into_iter().map(|w| Circuit::<OrchardZSA> { witnesses: w, phantom: core::marker::PhantomData }).collect();
+            Proof::create(pk, &circuits, &instances, rng).map_err(ProverError::ProofFailed)?
+        } else {
+            let circuits: Vec<_> = witnesses.into_iter().map(|w| Circuit::<OrchardVanilla> { witnesses: w, phantom: core::marker::PhantomData }).collect();
+            Proof::create(pk, &circuits, &instances, rng).map_err(ProverError::ProofFailed)?
+        };
 
         self.zkproof = Some(proof);
 

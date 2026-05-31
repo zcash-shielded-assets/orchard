@@ -192,6 +192,18 @@ pub struct Spend {
     /// - This is required by the Prover.
     pub(crate) rseed: Option<RandomSeed>,
 
+    /// The split note seed randomness, if this is a split spend.
+    ///
+    /// When present, this is used instead of `rseed` for nullifier derivation
+    /// (ZIP-226 § Split Notes). For regular (non-split) spends this is `None`.
+    pub(crate) rseed_split_note: Option<RandomSeed>,
+
+    /// Whether this spend is a split spend.
+    ///
+    /// Split spends have their value excluded from the value sum to prevent
+    /// double-counting, per ZIP-226.
+    pub(crate) split_flag: bool,
+
     /// The full viewing key that received the note being spent.
     ///
     /// - This is set by the Updater.
