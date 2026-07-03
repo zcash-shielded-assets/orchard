@@ -123,6 +123,19 @@ impl DomainVersion for IronwoodVersion {
     const NOTE_VERSION: NoteVersion = NoteVersion::V3;
 }
 
+/// Marker type for ZSA note encryption domains.
+#[cfg(feature = "zsa")]
+#[derive(Default, Debug)]
+pub struct ZsaVersion;
+
+#[cfg(feature = "zsa")]
+impl sealed::Sealed for ZsaVersion {}
+
+#[cfg(feature = "zsa")]
+impl DomainVersion for ZsaVersion {
+    const NOTE_VERSION: NoteVersion = NoteVersion::V3;
+}
+
 #[derive(Debug)]
 pub(crate) struct BundleDomainPolicy {
     note_version: NoteVersion,
@@ -194,6 +207,13 @@ pub type OrchardDomain = NoteEncryptionDomain<OrchardVersion>;
 /// This domain is otherwise identical to [`OrchardDomain`], but accepts only
 /// [`NoteVersion::V3`] note plaintexts, which use lead byte `0x03`.
 pub type IronwoodDomain = NoteEncryptionDomain<IronwoodVersion>;
+
+/// ZSA-specific note encryption logic.
+///
+/// This domain is otherwise identical to [`IronwoodDomain`], but supports ZSA
+/// note plaintexts with asset base information.
+#[cfg(feature = "zsa")]
+pub type ZsaDomain = NoteEncryptionDomain<ZsaVersion>;
 
 /// Note encryption logic restricted to a single note plaintext version.
 ///
