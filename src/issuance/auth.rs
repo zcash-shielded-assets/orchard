@@ -28,4 +28,18 @@ impl<A> IssueValidatingKey<A> {
     pub fn encode(&self) -> Vec<u8> {
         self.bytes.to_vec()
     }
+
+    /// Decodes an issue validating key from a byte slice.
+    pub fn decode(bytes: &[u8]) -> Result<Self, ()> {
+        if bytes.len() != 32 {
+            return Err(());
+        }
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(bytes);
+        Ok(Self::from_bytes(arr))
+    }
 }
+
+/// An issuance authorization signature.
+#[derive(Debug, Clone)]
+pub struct IssueAuthSig(pub Vec<u8>);
