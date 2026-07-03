@@ -38,4 +38,8 @@ impl IssueAuthSig {
     pub fn new(bytes: Vec<u8>) -> Self { Self(bytes) }
     /// Encodes the signature as bytes.
     pub fn encode(&self) -> &[u8] { &self.0 }
+    /// Decodes a signature from a byte slice.
+    pub fn decode(bytes: &[u8]) -> Result<Self, ()> {
+        Ok(Self(bytes.to_vec()))
+    }
 }

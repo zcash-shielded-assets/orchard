@@ -48,7 +48,7 @@ impl IssueAction {
         asset_desc_hash: Vec<u8>,
         notes: Vec<crate::Note>,
         flags: IssuanceFlags,
-    ) -> Self { Self { asset_desc_hash, notes, flags } }
+    ) -> Option<Self> { Some(Self { asset_desc_hash, notes, flags }) }
     /// Returns the asset description hash.
     pub fn asset_desc_hash(&self) -> &[u8] { &self.asset_desc_hash }
     /// Returns the notes for this action.
@@ -87,6 +87,8 @@ impl<T: IssueAuth> IssueBundle<T> {
     ) -> Self { Self { ik, actions, authorization } }
     /// Returns the issuer key.
     pub fn issuer(&self) -> &IssueValidatingKey<ZSASchnorr> { &self.ik }
+    /// Returns the issuer key (alias).
+    pub fn ik(&self) -> &IssueValidatingKey<ZSASchnorr> { &self.ik }
     /// Returns the actions.
     pub fn actions(&self) -> &NonEmpty<IssueAction> { &self.actions }
     /// Returns the authorization.
