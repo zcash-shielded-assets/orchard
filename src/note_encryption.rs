@@ -520,7 +520,7 @@ pub mod testing {
 
     use crate::{
         keys::OutgoingViewingKey,
-        note::{ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
+        note::{AssetBase, ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
         value::NoteValue,
         Address, Note,
     };
@@ -548,7 +548,7 @@ pub mod testing {
                 }
             }
         };
-        let note = Note::from_parts(recipient, value, rho, rseed, NoteVersion::V2).unwrap();
+        let note = Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, rseed, NoteVersion::V2).unwrap();
         let encryptor = OrchardNoteEncryption::new(ovk, note, [0u8; 512]);
         let cmx = ExtractedNoteCommitment::from(note.commitment());
         let ephemeral_key = OrchardDomain::epk_bytes(encryptor.epk());

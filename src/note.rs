@@ -486,7 +486,7 @@ pub mod testing {
         address::testing::arb_address, note::nullifier::testing::arb_nullifier, value::NoteValue,
     };
 
-    use super::{Note, NoteVersion, RandomSeed, Rho};
+    use super::{AssetBase, Note, NoteVersion, RandomSeed, Rho};
 
     prop_compose! {
         /// Generate an arbitrary random seed
@@ -505,6 +505,7 @@ pub mod testing {
             Note {
                 recipient,
                 value,
+                asset: AssetBase::zatoshi(),
                 rho,
                 rseed,
                 version,
