@@ -1,5 +1,8 @@
 //! Utility functions for computing bundle commitments
 
+#[cfg(feature = "zsa")]
+pub mod issuance;
+
 use blake2b_simd::{Hash as Blake2bHash, Params, State};
 
 use crate::{

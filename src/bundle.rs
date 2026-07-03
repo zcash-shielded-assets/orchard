@@ -3,6 +3,8 @@
 use alloc::vec::Vec;
 
 pub mod commitments;
+#[cfg(feature = "zsa")]
+pub mod burn_validation;
 
 #[cfg(feature = "circuit")]
 mod batch;
