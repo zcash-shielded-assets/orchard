@@ -17,7 +17,7 @@ use crate::{
         DiversifiedTransmissionKey, Diversifier, EphemeralPublicKey, EphemeralSecretKey,
         OutgoingViewingKey, PreparedEphemeralPublicKey, PreparedIncomingViewingKey, SharedSecret,
     },
-    note::{ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
+    note::{AssetBase, ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
     value::{NoteValue, ValueCommitment},
     Address, Note,
 };
@@ -71,7 +71,7 @@ where
     let pk_d = get_pk_d(&diversifier);
 
     let recipient = Address::from_parts(diversifier, pk_d);
-    let note = Option::from(Note::from_parts(recipient, value, rho, rseed, note_version))?;
+    let note = Option::from(Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, rseed, note_version))?;
     Some((note, recipient))
 }
 
@@ -120,6 +120,19 @@ pub struct IronwoodVersion;
 impl sealed::Sealed for IronwoodVersion {}
 
 impl DomainVersion for IronwoodVersion {
+    const NOTE_VERSION: NoteVersion = NoteVersion::V3;
+}
+
+/// Marker type for ZSA note encryption domains.
+#[cfg(feature = "zsa")]
+#[derive(Default, Debug)]
+pub struct ZsaVersion;
+
+#[cfg(feature = "zsa")]
+impl sealed::Sealed for ZsaVersion {}
+
+#[cfg(feature = "zsa")]
+impl DomainVersion for ZsaVersion {
     const NOTE_VERSION: NoteVersion = NoteVersion::V3;
 }
 
@@ -194,6 +207,13 @@ pub type OrchardDomain = NoteEncryptionDomain<OrchardVersion>;
 /// This domain is otherwise identical to [`OrchardDomain`], but accepts only
 /// [`NoteVersion::V3`] note plaintexts, which use lead byte `0x03`.
 pub type IronwoodDomain = NoteEncryptionDomain<IronwoodVersion>;
+
+/// ZSA-specific note encryption logic.
+///
+/// This domain is otherwise identical to [`IronwoodDomain`], but supports ZSA
+/// note plaintexts with asset base information.
+#[cfg(feature = "zsa")]
+pub type ZsaDomain = NoteEncryptionDomain<ZsaVersion>;
 
 /// Note encryption logic restricted to a single note plaintext version.
 ///
@@ -500,7 +520,7 @@ pub mod testing {
 
     use crate::{
         keys::OutgoingViewingKey,
-        note::{ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
+        note::{AssetBase, ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
         value::NoteValue,
         Address, Note,
     };
@@ -528,7 +548,7 @@ pub mod testing {
                 }
             }
         };
-        let note = Note::from_parts(recipient, value, rho, rseed, NoteVersion::V2).unwrap();
+        let note = Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, rseed, NoteVersion::V2).unwrap();
         let encryptor = OrchardNoteEncryption::new(ovk, note, [0u8; 512]);
         let cmx = ExtractedNoteCommitment::from(note.commitment());
         let ephemeral_key = OrchardDomain::epk_bytes(encryptor.epk());

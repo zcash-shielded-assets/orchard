@@ -40,6 +40,10 @@ pub mod note;
 pub mod note_encryption;
 pub mod pczt;
 pub mod primitives;
+#[cfg(feature = "zsa")]
+pub mod sighash_kind;
+#[cfg(feature = "zsa-issuance")]
+pub mod issuance;
 #[cfg(not(feature = "unstable-voting-circuits"))]
 mod spec;
 #[cfg(feature = "unstable-voting-circuits")]
@@ -125,6 +129,9 @@ pub enum ValuePool {
     Orchard,
     /// The Ironwood value pool.
     Ironwood,
+    /// The Zcash Shielded Assets (ZSA) value pool, testnet only.
+    #[cfg(feature = "zsa")]
+    ZSA,
 }
 
 /// The versions of the Orchard protocol.

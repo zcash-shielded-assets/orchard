@@ -1,5 +1,8 @@
 //! Utility functions for computing bundle commitments
 
+#[cfg(feature = "zsa")]
+pub mod issuance;
+
 use blake2b_simd::{Hash as Blake2bHash, Params, State};
 
 use crate::{
@@ -61,6 +64,16 @@ const IRONWOOD_V6_PERSONALIZATIONS: BundleCommitmentPersonalizations =
         auth: ZCASH_IRONWOOD_SIGS_HASH_PERSONALIZATION,
     };
 
+#[cfg(feature = "zsa")]
+const ZSA_V6_PERSONALIZATIONS: BundleCommitmentPersonalizations =
+    BundleCommitmentPersonalizations {
+        bundle: ZCASH_IRONWOOD_HASH_PERSONALIZATION,
+        actions_compact: ZCASH_IRONWOOD_ACTIONS_COMPACT_HASH_PERSONALIZATION,
+        actions_memos: ZCASH_IRONWOOD_ACTIONS_MEMOS_HASH_PERSONALIZATION,
+        actions_noncompact: ZCASH_IRONWOOD_ACTIONS_NONCOMPACT_HASH_PERSONALIZATION,
+        auth: ZCASH_IRONWOOD_SIGS_HASH_PERSONALIZATION,
+    };
+
 /// The hash format used to compute a bundle's transaction-ID and authorizing digests,
 /// selected from the bundle's pool and the version of the transaction it is encoded in.
 /// Orchard bundles use the v5 or v6 format according to the transaction; Ironwood bundles
@@ -70,6 +83,8 @@ enum BundleCommitmentFormat {
     OrchardV5,
     OrchardV6,
     IronwoodV6,
+    #[cfg(feature = "zsa")]
+    ZsaV6,
 }
 
 impl ValuePool {
@@ -82,6 +97,10 @@ impl ValuePool {
             (ValuePool::Orchard, TxVersion::V6) => Ok(BundleCommitmentFormat::OrchardV6),
             (ValuePool::Ironwood, TxVersion::V5) => Err(CommitmentError::InvalidTransactionVersion),
             (ValuePool::Ironwood, TxVersion::V6) => Ok(BundleCommitmentFormat::IronwoodV6),
+            #[cfg(feature = "zsa")]
+            (ValuePool::ZSA, TxVersion::V6) => Ok(BundleCommitmentFormat::ZsaV6),
+            #[cfg(feature = "zsa")]
+            (ValuePool::ZSA, TxVersion::V5) => Err(CommitmentError::InvalidTransactionVersion),
         }
     }
 }
@@ -92,6 +111,8 @@ impl BundleCommitmentFormat {
             BundleCommitmentFormat::OrchardV5 => ORCHARD_V5_PERSONALIZATIONS,
             BundleCommitmentFormat::OrchardV6 => ORCHARD_V6_PERSONALIZATIONS,
             BundleCommitmentFormat::IronwoodV6 => IRONWOOD_V6_PERSONALIZATIONS,
+            #[cfg(feature = "zsa")]
+            BundleCommitmentFormat::ZsaV6 => ZSA_V6_PERSONALIZATIONS,
         }
     }
 

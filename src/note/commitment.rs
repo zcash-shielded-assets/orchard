@@ -13,8 +13,11 @@ use group::ff::{PrimeField, PrimeFieldBits};
 use pasta_curves::pallas;
 use subtle::{ConstantTimeEq, CtOption};
 
+use alloc::vec::Vec;
+
 use crate::{
     constants::{fixed_bases::NOTE_COMMITMENT_PERSONALIZATION, L_ORCHARD_BASE},
+    note::AssetBase,
     spec::extract_p,
     value::NoteValue,
 };
@@ -54,22 +57,39 @@ impl NoteCommitment {
         g_d: [u8; 32],
         pk_d: [u8; 32],
         v: NoteValue,
+        asset: Option<AssetBase>,
         rho: pallas::Base,
         psi: pallas::Base,
         rcm: NoteCommitTrapdoor,
     ) -> CtOption<Self> {
-        let domain = sinsemilla::CommitDomain::new(NOTE_COMMITMENT_PERSONALIZATION);
-        domain
-            .commit(
-                iter::empty()
-                    .chain(BitArray::<_, Lsb0>::new(g_d).iter().by_vals())
-                    .chain(BitArray::<_, Lsb0>::new(pk_d).iter().by_vals())
-                    .chain(v.to_le_bits().iter().by_vals())
-                    .chain(rho.to_le_bits().iter().by_vals().take(L_ORCHARD_BASE))
-                    .chain(psi.to_le_bits().iter().by_vals().take(L_ORCHARD_BASE)),
-                &rcm.0,
-            )
-            .map(NoteCommitment)
+        let is_zsa = asset.map_or(false, |a| bool::from(!a.is_zatoshi()));
+        let personalization = if is_zsa {
+            crate::constants::fixed_bases::NOTE_ZSA_COMMITMENT_PERSONALIZATION
+        } else {
+            NOTE_COMMITMENT_PERSONALIZATION
+        };
+        let domain = sinsemilla::CommitDomain::new(personalization);
+
+        let message: Vec<bool> = if is_zsa {
+            let a = asset.unwrap();
+            iter::empty()
+                .chain(BitArray::<_, Lsb0>::new(g_d).iter().by_vals())
+                .chain(BitArray::<_, Lsb0>::new(pk_d).iter().by_vals())
+                .chain(v.to_le_bits().iter().by_vals())
+                .chain(BitArray::<_, Lsb0>::new(a.to_bytes()).iter().by_vals())
+                .chain(rho.to_le_bits().iter().by_vals().take(L_ORCHARD_BASE))
+                .chain(psi.to_le_bits().iter().by_vals().take(L_ORCHARD_BASE))
+                .collect()
+        } else {
+            iter::empty()
+                .chain(BitArray::<_, Lsb0>::new(g_d).iter().by_vals())
+                .chain(BitArray::<_, Lsb0>::new(pk_d).iter().by_vals())
+                .chain(v.to_le_bits().iter().by_vals())
+                .chain(rho.to_le_bits().iter().by_vals().take(L_ORCHARD_BASE))
+                .chain(psi.to_le_bits().iter().by_vals().take(L_ORCHARD_BASE))
+                .collect()
+        };
+        domain.commit(message.iter().copied(), &rcm.0).map(NoteCommitment)
     }
 }
 

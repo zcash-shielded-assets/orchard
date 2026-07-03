@@ -140,6 +140,10 @@ pub enum OrchardCircuitVersion {
     /// The post-NU 6.3 circuit. This uses the fixed circuit with additional constraints
     /// enforcing the `disableCrossAddress` public input.
     PostNu6_3,
+    /// The ZSA (Zcash Shielded Assets) circuit. Extends the post-NU6.3 circuit with
+    /// additional constraints for asset base verification.
+    #[cfg(feature = "zsa")]
+    Zsa,
 }
 
 impl OrchardCircuitVersion {
@@ -157,6 +161,8 @@ impl OrchardCircuitVersion {
                 false
             }
             OrchardCircuitVersion::PostNu6_3 => true,
+            #[cfg(feature = "zsa")]
+            OrchardCircuitVersion::Zsa => true,
         }
     }
 
@@ -167,6 +173,8 @@ impl OrchardCircuitVersion {
             OrchardCircuitVersion::FixedPostNu6_2 | OrchardCircuitVersion::PostNu6_3 => {
                 CircuitVersion::AnchoredBase
             }
+            #[cfg(feature = "zsa")]
+            OrchardCircuitVersion::Zsa => CircuitVersion::AnchoredBase,
         }
     }
 }

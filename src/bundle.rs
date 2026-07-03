@@ -3,6 +3,8 @@
 use alloc::vec::Vec;
 
 pub mod commitments;
+#[cfg(feature = "zsa")]
+pub mod burn_validation;
 
 #[cfg(feature = "circuit")]
 mod batch;
@@ -23,11 +25,11 @@ use crate::{
     address::Address,
     bundle::commitments::{hash_bundle_auth_data, hash_bundle_txid_data},
     keys::{IncomingViewingKey, OutgoingViewingKey, PreparedIncomingViewingKey},
-    note::{Note, NoteVersion},
+    note::{AssetBase, Note, NoteVersion},
     note_encryption::BundleDomain,
     primitives::redpallas::{self, Binding, SpendAuth},
     tree::Anchor,
-    value::{ValueCommitTrapdoor, ValueCommitment, ValueSum},
+    value::{NoteValue, ValueCommitTrapdoor, ValueCommitment, ValueSum},
     Proof, ProtocolVersion, ValuePool,
 };
 
@@ -112,6 +114,16 @@ impl BundleVersion {
         }
     }
 
+    /// The [`BundleVersion`] for the ZSA (Zcash Shielded Assets) pool under
+    /// [`ProtocolVersion::V3`] (the ZSA pool, testnet only).
+    #[cfg(feature = "zsa")]
+    pub const fn zsa_v3() -> Self {
+        Self {
+            value_pool: ValuePool::ZSA,
+            protocol_version: ProtocolVersion::V3,
+        }
+    }
+
     /// Returns the [`ValuePool`] to which this bundle version applies.
     pub fn value_pool(&self) -> ValuePool {
         self.value_pool
@@ -131,6 +143,10 @@ impl BundleVersion {
     /// `VerifyingKey::build(bundle_version.circuit_version())`.
     #[cfg(feature = "circuit")]
     pub fn circuit_version(&self) -> OrchardCircuitVersion {
+        #[cfg(feature = "zsa")]
+        if self.value_pool == ValuePool::ZSA {
+            return OrchardCircuitVersion::Zsa;
+        }
         match self.protocol_version {
             ProtocolVersion::InsecureV1 => OrchardCircuitVersion::InsecurePreNu6_2,
             ProtocolVersion::V2 => OrchardCircuitVersion::FixedPostNu6_2,
@@ -146,6 +162,8 @@ impl BundleVersion {
         match self.value_pool {
             ValuePool::Orchard => NoteVersion::V2,
             ValuePool::Ironwood => NoteVersion::V3,
+            #[cfg(feature = "zsa")]
+            ValuePool::ZSA => NoteVersion::V3,
         }
     }
 
@@ -158,6 +176,10 @@ impl BundleVersion {
     /// [`Builder`](crate::builder::Builder) makes; that is builder policy chosen within this
     /// constraint.
     pub(crate) fn permits_cross_address_transfers(&self) -> bool {
+        #[cfg(feature = "zsa")]
+        if self.value_pool == ValuePool::ZSA {
+            return true;
+        }
         !matches!(
             (self.protocol_version, self.value_pool),
             (ProtocolVersion::V3, ValuePool::Orchard)
@@ -371,8 +393,18 @@ impl Flags {
                     value |= FLAG_V6_CROSS_ADDRESS_ENABLED;
                 }
             }
+            // The ZSA pool encodes the caller's choice in bit 2 (same as Ironwood).
+            #[cfg(feature = "zsa")]
+            (ValuePool::ZSA, ProtocolVersion::V3) => {
+                if self.cross_address_enabled {
+                    value |= FLAG_V6_CROSS_ADDRESS_ENABLED;
+                }
+            }
             // The Ironwood pool is not defined prior to ProtocolVersion::V3.
             (ValuePool::Ironwood, _) => return None,
+            // The ZSA pool is only defined for ProtocolVersion::V3.
+            #[cfg(feature = "zsa")]
+            (ValuePool::ZSA, _) => return None,
         }
 
         Some(value)
@@ -446,6 +478,8 @@ pub struct Bundle<T: Authorization, V> {
     ///
     /// This is the sum of Orchard spends minus the sum of Orchard outputs.
     value_balance: V,
+    /// Assets intended for burning (ZSA-specific). Empty for non-ZSA bundles.
+    burn: Vec<(AssetBase, NoteValue)>,
     /// The root of the Orchard commitment tree that this bundle commits to.
     anchor: Anchor,
     /// The authorization for this bundle.
@@ -474,6 +508,7 @@ impl<T: Authorization, V: fmt::Debug> fmt::Debug for Bundle<T, V> {
             .field("actions", &Actions(&self.actions))
             .field("flags", &self.flags)
             .field("value_balance", &self.value_balance)
+            .field("burn", &self.burn)
             .field("anchor", &self.anchor)
             .field("authorization", &self.authorization)
             .field("bundle_version", &self.bundle_version)
@@ -524,6 +559,7 @@ impl<T: Authorization, V> Bundle<T, V> {
         actions: NonEmpty<Action<T::SpendAuth>>,
         flags: Flags,
         value_balance: V,
+        burn: Vec<(AssetBase, NoteValue)>,
         anchor: Anchor,
         authorization: T,
         bundle_version: BundleVersion,
@@ -533,6 +569,7 @@ impl<T: Authorization, V> Bundle<T, V> {
             actions,
             flags,
             value_balance,
+            burn,
             anchor,
             authorization,
             bundle_version,
@@ -554,6 +591,13 @@ impl<T: Authorization, V> Bundle<T, V> {
     /// This is the sum of Orchard spends minus the sum Orchard outputs.
     pub fn value_balance(&self) -> &V {
         &self.value_balance
+    }
+
+    /// Returns the assets intended for burning in this bundle.
+    ///
+    /// For non-ZSA bundles, this is always empty.
+    pub fn burn(&self) -> &[(AssetBase, NoteValue)] {
+        &self.burn
     }
 
     /// Returns the root of the Orchard commitment tree that this bundle commits to.
@@ -598,6 +642,7 @@ impl<T: Authorization, V> Bundle<T, V> {
             actions: self.actions,
             flags: self.flags,
             value_balance: f(self.value_balance)?,
+            burn: self.burn,
             anchor: self.anchor,
             authorization: self.authorization,
             bundle_version: self.bundle_version,
@@ -618,6 +663,7 @@ impl<T: Authorization, V> Bundle<T, V> {
                 .map(|a| a.map(|a_auth| spend_auth(context, &authorization, a_auth))),
             flags: self.flags,
             value_balance: self.value_balance,
+            burn: self.burn,
             anchor: self.anchor,
             authorization: step(context, authorization),
             bundle_version: self.bundle_version,
@@ -642,6 +688,7 @@ impl<T: Authorization, V> Bundle<T, V> {
             actions: NonEmpty::from_vec(new_actions).unwrap(),
             flags: self.flags,
             value_balance: self.value_balance,
+            burn: self.burn,
             anchor: self.anchor,
             authorization: step(context, authorization)?,
             bundle_version: self.bundle_version,
@@ -812,6 +859,7 @@ impl<V> Bundle<EffectsOnly, V> {
             actions,
             flags,
             value_balance,
+            vec![],
             anchor,
             authorization,
             bundle_version,
@@ -955,6 +1003,7 @@ impl<V> Bundle<Authorized, V> {
             actions,
             flags,
             value_balance,
+            vec![],
             anchor,
             authorization,
             bundle_version,
@@ -1274,6 +1323,7 @@ pub(crate) mod tests {
             bundle.actions().clone(),
             flags,
             *bundle.value_balance(),
+            bundle.burn().to_vec(),
             *bundle.anchor(),
             bundle.authorization().clone(),
             bundle.bundle_version(),
@@ -1509,6 +1559,7 @@ pub(crate) mod tests {
                     actions.clone(),
                     flags,
                     0i64,
+                    vec![],
                     anchor,
                     authorization.clone(),
                     bundle_version,
@@ -1543,6 +1594,7 @@ pub(crate) mod tests {
                 bundle.actions().clone(),
                 *bundle.flags(),
                 0i64,
+                vec![],
                 *bundle.anchor(),
                 bundle.authorization().clone(),
                 BundleVersion::ironwood_v3(),
@@ -1551,6 +1603,7 @@ pub(crate) mod tests {
                 bundle.actions().clone(),
                 *bundle.flags(),
                 *bundle.value_balance(),
+                vec![],
                 *bundle.anchor(),
                 bundle.authorization().clone(),
                 BundleVersion::ironwood_v3(),
@@ -1585,6 +1638,7 @@ pub(crate) mod tests {
                     bundle.actions().clone(),
                     flags,
                     0i64,
+                    vec![],
                     anchor,
                     bundle.authorization().clone(),
                     bundle_version,

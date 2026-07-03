@@ -1095,6 +1095,7 @@ fn finish_unauthorized_bundle<V: TryFrom<i64>, R: RngCore>(
                 actions,
                 flags,
                 result_value_balance,
+                vec![],
                 anchor,
                 InProgress {
                     proof: Unproven {
