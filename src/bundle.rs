@@ -112,6 +112,16 @@ impl BundleVersion {
         }
     }
 
+    /// The [`BundleVersion`] for the ZSA (Zcash Shielded Assets) pool under
+    /// [`ProtocolVersion::V3`] (the ZSA pool, testnet only).
+    #[cfg(feature = "zsa")]
+    pub const fn zsa_v3() -> Self {
+        Self {
+            value_pool: ValuePool::ZSA,
+            protocol_version: ProtocolVersion::V3,
+        }
+    }
+
     /// Returns the [`ValuePool`] to which this bundle version applies.
     pub fn value_pool(&self) -> ValuePool {
         self.value_pool
@@ -131,6 +141,10 @@ impl BundleVersion {
     /// `VerifyingKey::build(bundle_version.circuit_version())`.
     #[cfg(feature = "circuit")]
     pub fn circuit_version(&self) -> OrchardCircuitVersion {
+        #[cfg(feature = "zsa")]
+        if self.value_pool == ValuePool::ZSA {
+            return OrchardCircuitVersion::Zsa;
+        }
         match self.protocol_version {
             ProtocolVersion::InsecureV1 => OrchardCircuitVersion::InsecurePreNu6_2,
             ProtocolVersion::V2 => OrchardCircuitVersion::FixedPostNu6_2,
@@ -146,6 +160,8 @@ impl BundleVersion {
         match self.value_pool {
             ValuePool::Orchard => NoteVersion::V2,
             ValuePool::Ironwood => NoteVersion::V3,
+            #[cfg(feature = "zsa")]
+            ValuePool::ZSA => NoteVersion::V3,
         }
     }
 
@@ -158,6 +174,10 @@ impl BundleVersion {
     /// [`Builder`](crate::builder::Builder) makes; that is builder policy chosen within this
     /// constraint.
     pub(crate) fn permits_cross_address_transfers(&self) -> bool {
+        #[cfg(feature = "zsa")]
+        if self.value_pool == ValuePool::ZSA {
+            return true;
+        }
         !matches!(
             (self.protocol_version, self.value_pool),
             (ProtocolVersion::V3, ValuePool::Orchard)
@@ -371,8 +391,18 @@ impl Flags {
                     value |= FLAG_V6_CROSS_ADDRESS_ENABLED;
                 }
             }
+            // The ZSA pool encodes the caller's choice in bit 2 (same as Ironwood).
+            #[cfg(feature = "zsa")]
+            (ValuePool::ZSA, ProtocolVersion::V3) => {
+                if self.cross_address_enabled {
+                    value |= FLAG_V6_CROSS_ADDRESS_ENABLED;
+                }
+            }
             // The Ironwood pool is not defined prior to ProtocolVersion::V3.
             (ValuePool::Ironwood, _) => return None,
+            // The ZSA pool is only defined for ProtocolVersion::V3.
+            #[cfg(feature = "zsa")]
+            (ValuePool::ZSA, _) => return None,
         }
 
         Some(value)

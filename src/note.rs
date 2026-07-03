@@ -27,6 +27,9 @@ pub mod commitment;
 pub use self::commitment::NoteCommitTrapdoor;
 pub use self::commitment::{ExtractedNoteCommitment, NoteCommitment};
 
+pub mod asset_base;
+pub use self::asset_base::AssetBase;
+
 /// Note plaintext version.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NoteVersion {
@@ -238,6 +241,8 @@ pub struct Note {
     recipient: Address,
     /// The value of this note.
     value: NoteValue,
+    /// The asset of this note (ZEC for vanilla Orchard, custom for ZSA).
+    asset: AssetBase,
     /// A unique creation ID for this note.
     ///
     /// This is produced from the nullifier of the note that will be spent in the [`Action`] that
@@ -279,6 +284,7 @@ impl Note {
     pub fn from_parts(
         recipient: Address,
         value: NoteValue,
+        asset: AssetBase,
         rho: Rho,
         rseed: RandomSeed,
         version: NoteVersion,
@@ -286,6 +292,7 @@ impl Note {
         let note = Note {
             recipient,
             value,
+            asset,
             rho,
             rseed,
             version,
@@ -310,6 +317,7 @@ impl Note {
             let note = Note::from_parts(
                 recipient,
                 value,
+                AssetBase::zatoshi(),
                 rho,
                 RandomSeed::random(&mut rng, &rho),
                 version,
@@ -354,6 +362,11 @@ impl Note {
     /// Returns the value of this note.
     pub fn value(&self) -> NoteValue {
         self.value
+    }
+
+    /// Returns the asset of this note.
+    pub fn asset(&self) -> AssetBase {
+        self.asset
     }
 
     /// Returns the rseed value of this note.
@@ -428,6 +441,7 @@ impl Note {
             g_d_bytes,
             pk_d_bytes,
             self.value,
+            Some(self.asset),
             self.rho.0,
             psi,
             self.rcm(),
@@ -537,12 +551,16 @@ mod tests {
         let rho_inner = rho.into_inner();
         let value = NoteValue::from_raw(tv.note_v);
 
-        let cmx_old =
-            NoteCommitment::derive(g_d_bytes, pk_d_bytes, value, rho_inner, psi, rcm_old).unwrap();
+        let cmx_old = NoteCommitment::derive(
+            g_d_bytes, pk_d_bytes, value, None, rho_inner, psi, rcm_old,
+        )
+        .unwrap();
         let cmx_old_bytes = ExtractedNoteCommitment::from(cmx_old).to_bytes();
 
-        let cmx_qr =
-            NoteCommitment::derive(g_d_bytes, pk_d_bytes, value, rho_inner, psi, rcm_new).unwrap();
+        let cmx_qr = NoteCommitment::derive(
+            g_d_bytes, pk_d_bytes, value, None, rho_inner, psi, rcm_new,
+        )
+        .unwrap();
         let cmx_qr_bytes = ExtractedNoteCommitment::from(cmx_qr).to_bytes();
 
         QrRcmDerivation {
