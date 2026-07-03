@@ -110,6 +110,7 @@ impl super::Bundle {
                 actions,
                 self.flags,
                 value_balance,
+                vec![],
                 self.anchor,
                 authorization,
                 self.bundle_version,
