@@ -115,6 +115,6 @@ pub mod testing {
     }
     fn arb_issue_action() -> impl Strategy<Value = IssueAction> {
         proptest::collection::vec(proptest::num::u8::ANY, 1..100)
-            .prop_map(|bytes| IssueAction::new_with_flags(bytes, Vec::new(), IssuanceFlags::from_parts(false)))
+            .prop_map(|bytes| IssueAction::new_with_flags(bytes, Vec::new(), 0u8).unwrap())
     }
 }
