@@ -29,6 +29,8 @@ pub use self::commitment::{ExtractedNoteCommitment, NoteCommitment};
 
 pub mod asset_base;
 pub use self::asset_base::AssetBase;
+#[cfg(feature = "zsa-issuance")]
+pub use self::asset_base::AssetId;
 
 /// Note plaintext version.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
