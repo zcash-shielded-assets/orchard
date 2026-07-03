@@ -45,10 +45,10 @@ pub struct IssueAction {
 impl IssueAction {
     /// Creates a new `IssueAction`.
     pub fn new_with_flags(
-        asset_desc_hash: Vec<u8>,
+        asset_desc_hash: [u8; 32],
         notes: Vec<crate::Note>,
-        flags: IssuanceFlags,
-    ) -> Option<Self> { Some(Self { asset_desc_hash, notes, flags }) }
+        flags: u8,
+    ) -> Option<Self> { Some(Self { asset_desc_hash: asset_desc_hash.to_vec(), notes, flags: IssuanceFlags::from_parts(flags & 1 != 0) }) }
     /// Returns the asset description hash.
     pub fn asset_desc_hash(&self) -> &[u8] { &self.asset_desc_hash }
     /// Returns the notes for this action.
@@ -109,7 +109,7 @@ pub mod testing {
         ) -> IssueBundle<Signed> {
             let ik = IssueValidatingKey::from_bytes([0u8; 32]);
             let actions = NonEmpty::from_vec(actions).unwrap();
-            let sig = BIP340IssueAuthSig::new(Vec::new(), IssueSighashKind::AllEffecting);
+            let sig = BIP340IssueAuthSig::new(IssueSighashKind::AllEffecting, IssueAuthSig::new(Vec::new()));
             IssueBundle { ik, actions, authorization: Signed::new(sig) }
         }
     }

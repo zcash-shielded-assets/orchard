@@ -19,8 +19,8 @@ pub struct BIP340IssueAuthSig {
 
 impl BIP340IssueAuthSig {
     /// Creates a new BIP340 issuance authorization signature.
-    pub fn new(sig: Vec<u8>, sighash_kind: IssueSighashKind) -> Self {
-        Self { sig: IssueAuthSig(sig), sighash_kind }
+    pub fn new(sighash_kind: IssueSighashKind, sig: IssueAuthSig) -> Self {
+        Self { sig, sighash_kind }
     }
     /// Returns the sighash kind.
     pub fn sighash_kind(&self) -> &IssueSighashKind { &self.sighash_kind }
