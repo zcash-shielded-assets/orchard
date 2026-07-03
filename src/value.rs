@@ -370,6 +370,33 @@ impl ValueCommitment {
         ValueCommitment(V * value + R * rcv.0)
     }
 
+    /// Derives a value commitment for a specific asset.
+    ///
+    /// For zatoshi (`AssetBase::zatoshi()`), this is identical to [`ValueCommitment::derive`].
+    /// For custom ZSA assets, the asset base is used as the value generator V.
+    #[allow(non_snake_case)]
+    pub fn derive_with_asset(
+        value: ValueSum,
+        rcv: ValueCommitTrapdoor,
+        asset: crate::note::AssetBase,
+    ) -> Self {
+        if bool::from(asset.is_zatoshi()) {
+            return Self::derive(value, rcv);
+        }
+        let hasher = pallas::Point::hash_to_curve(VALUE_COMMITMENT_PERSONALIZATION);
+        let V = asset.cv_base();
+        let R = hasher(&VALUE_COMMITMENT_R_BYTES);
+        let abs_value = u64::try_from(value.0.abs()).expect("value must be in valid range");
+
+        let value = if value.0.is_negative() {
+            -pallas::Scalar::from(abs_value)
+        } else {
+            pallas::Scalar::from(abs_value)
+        };
+
+        ValueCommitment(V * value + R * rcv.0)
+    }
+
     pub(crate) fn into_bvk(self) -> redpallas::VerificationKey<Binding> {
         // TODO: impl From<pallas::Point> for redpallas::VerificationKey.
         self.0.to_bytes().try_into().unwrap()
