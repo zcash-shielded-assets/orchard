@@ -1,6 +1,5 @@
 //! Sighash kind types for ZSA issuance bundles.
 
-use alloc::vec::Vec;
 use crate::issuance::auth::IssueAuthSig;
 
 /// Sighash kind for ZSA issuance bundles.

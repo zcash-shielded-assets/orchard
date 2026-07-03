@@ -118,10 +118,12 @@ impl NoteValue {
         NoteValue(value)
     }
 
+    /// Deserializes a note value from its canonical byte representation.
     pub fn from_bytes(bytes: [u8; 8]) -> Self {
         NoteValue(u64::from_le_bytes(bytes))
     }
 
+    /// Serializes this note value to its canonical byte representation.
     pub fn to_bytes(self) -> [u8; 8] {
         self.0.to_le_bytes()
     }

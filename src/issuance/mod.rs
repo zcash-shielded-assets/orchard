@@ -115,6 +115,10 @@ pub mod testing {
     }
     fn arb_issue_action() -> impl Strategy<Value = IssueAction> {
         proptest::collection::vec(proptest::num::u8::ANY, 1..100)
-            .prop_map(|bytes| IssueAction::new_with_flags(bytes, Vec::new(), 0u8).unwrap())
+            .prop_map(|bytes: Vec<u8>| {
+                let mut arr = [0u8; 32];
+                for (i, b) in bytes.iter().take(32).enumerate() { arr[i] = *b; }
+                IssueAction::new_with_flags(arr, Vec::new(), 0u8).unwrap()
+            })
     }
 }
