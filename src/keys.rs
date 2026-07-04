@@ -989,7 +989,7 @@ mod tests {
         *,
     };
     use crate::{
-        note::{ExtractedNoteCommitment, NoteVersion, RandomSeed, Rho},
+        note::{AssetBase, ExtractedNoteCommitment, NoteVersion, RandomSeed, Rho},
         value::NoteValue,
         Note,
     };
@@ -1073,6 +1073,7 @@ mod tests {
             let orchard_note = Note::from_parts(
                 addr,
                 NoteValue::from_raw(tv.note_v),
+                AssetBase::zatoshi(),
                 rho,
                 RandomSeed::from_bytes(tv.note_rseed, &rho).unwrap(),
                 NoteVersion::V2,

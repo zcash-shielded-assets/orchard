@@ -320,10 +320,10 @@ impl<P: DomainPolicy> Domain for NoteEncryptionDomain<P> {
     fn parse_note_plaintext_without_memo_ivk(
         &self,
         ivk: &Self::IncomingViewingKey,
-        plaintext: &Self::CompactNotePlaintextBytes,
+        plaintext: &[u8],
     ) -> Option<(Self::Note, Self::Recipient)> {
-        let note_version = self.policy.note_version(plaintext.as_ref())?;
-        parse_note_plaintext_without_memo(self.rho, plaintext.as_ref(), note_version, |diversifier| {
+        let note_version = self.policy.note_version(plaintext)?;
+        parse_note_plaintext_without_memo(self.rho, plaintext, note_version, |diversifier| {
             DiversifiedTransmissionKey::derive(ivk, diversifier)
         })
     }
@@ -331,10 +331,10 @@ impl<P: DomainPolicy> Domain for NoteEncryptionDomain<P> {
     fn parse_note_plaintext_without_memo_ovk(
         &self,
         pk_d: &Self::DiversifiedTransmissionKey,
-        plaintext: &Self::CompactNotePlaintextBytes,
+        plaintext: &[u8],
     ) -> Option<(Self::Note, Self::Recipient)> {
-        let note_version = self.policy.note_version(plaintext.as_ref())?;
-        parse_note_plaintext_without_memo(self.rho, plaintext.as_ref(), note_version, |_| *pk_d)
+        let note_version = self.policy.note_version(plaintext)?;
+        parse_note_plaintext_without_memo(self.rho, plaintext, note_version, |_| *pk_d)
     }
 
     fn split_plaintext_at_memo(
@@ -538,9 +538,10 @@ pub mod testing {
     use rand::RngCore;
     use zcash_note_encryption::Domain;
 
+    use zcash_note_encryption::note_bytes::NoteBytesData;
     use crate::{
         keys::OutgoingViewingKey,
-        note::{ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
+        note::{AssetBase, ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
         value::NoteValue,
         Address, Note,
     };
@@ -598,6 +599,8 @@ mod tests {
         prf_ock_orchard, CompactAction, IronwoodDomain, IronwoodNoteEncryption, OrchardDomain,
         OrchardNoteEncryption,
     };
+    use zcash_note_encryption::note_bytes::NoteBytesData;
+    use super::OrchardDomain;
     use crate::{
         action::Action,
         keys::{
@@ -605,7 +608,7 @@ mod tests {
             OutgoingViewingKey, PreparedIncomingViewingKey, Scope, SpendingKey,
         },
         note::{
-            ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho,
+            AssetBase, ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho,
             TransmittedNoteCiphertext,
         },
         primitives::redpallas,
@@ -711,9 +714,9 @@ mod tests {
                 // We don't need a real rk for this test.
                 redpallas::VerificationKey::dummy(),
                 cmx,
-                TransmittedNoteCiphertext {
+                TransmittedNoteCiphertext::<OrchardDomain> {
                     epk_bytes: ephemeral_key.0,
-                    enc_ciphertext: tv.c_enc,
+                    enc_ciphertext: NoteBytesData(tv.c_enc),
                     out_ciphertext: tv.c_out,
                 },
                 cv_net.clone(),
@@ -800,21 +803,21 @@ mod tests {
 
         assert_eq!(
             orchard_domain
-                .parse_note_plaintext_without_memo_ovk(pk_d, &np_v2)
+                .parse_note_plaintext_without_memo_ovk(pk_d, np_v2.as_ref())
                 .map(|(note, _)| note),
             Some(note_v2)
         );
         assert_eq!(
             ironwood_domain
-                .parse_note_plaintext_without_memo_ovk(pk_d, &np_v3)
+                .parse_note_plaintext_without_memo_ovk(pk_d, np_v3.as_ref())
                 .map(|(note, _)| note),
             Some(note_v3)
         );
         assert!(orchard_domain
-            .parse_note_plaintext_without_memo_ovk(pk_d, &np_v3)
+            .parse_note_plaintext_without_memo_ovk(pk_d, np_v3.as_ref())
             .is_none());
         assert!(ironwood_domain
-            .parse_note_plaintext_without_memo_ovk(pk_d, &np_v2)
+            .parse_note_plaintext_without_memo_ovk(pk_d, np_v2.as_ref())
             .is_none());
     }
 

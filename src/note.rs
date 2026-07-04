@@ -553,6 +553,29 @@ pub mod testing {
             }
         }
     }
+
+    #[cfg(feature = "zsa")]
+    prop_compose! {
+        /// Generate an arbitrary ZSA note with the given asset.
+        pub fn arb_zsa_note(
+            ik: crate::zsa::issuance::auth::IssueValidatingKey<crate::zsa::issuance::auth::ZSASchnorr>,
+            asset_desc_hash: [u8; 32],
+        )(
+            recipient in arb_address(),
+            value in crate::value::testing::arb_note_value(),
+            rho in arb_nullifier().prop_map(Rho::from_nf_old),
+            rseed in arb_rseed(),
+        ) -> Note {
+            Note {
+                recipient,
+                value,
+                asset: AssetBase::custom(&crate::note::AssetId::new_v0(&ik, &asset_desc_hash)),
+                rho,
+                rseed,
+                version: NoteVersion::V3,
+            }
+        }
+    }
 }
 
 #[cfg(test)]

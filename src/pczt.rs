@@ -13,7 +13,7 @@ use zip32::ChildIndex;
 use crate::{
     bundle::{BundleVersion, Flags},
     keys::{FullViewingKey, SpendingKey},
-    note::{ExtractedNoteCommitment, Nullifier, RandomSeed, Rho, TransmittedNoteCiphertext},
+    note::{AssetBase, ExtractedNoteCommitment, Nullifier, RandomSeed, Rho, TransmittedNoteCiphertext},
     primitives::redpallas::{self, Binding, SpendAuth},
     tree::MerklePath,
     value::{NoteValue, ValueCommitTrapdoor, ValueCommitment, ValueSum},
@@ -378,7 +378,7 @@ mod tests {
         circuit::{OrchardCircuitVersion, ProvingKey, VerifyingKey},
         constants::MERKLE_DEPTH_ORCHARD,
         keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
-        note::{ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
+        note::{AssetBase, ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
         pczt::{
             IoFinalizerError, ParseError, ProverError, SignerError, TxExtractorError, VerifyError,
             Zip32Derivation,
@@ -627,6 +627,7 @@ mod tests {
                 if let Some(note) = Note::from_parts(
                     recipient,
                     value,
+                    AssetBase::zatoshi(),
                     rho,
                     RandomSeed::random(&mut rng, &rho),
                     NoteVersion::V3,
@@ -725,6 +726,7 @@ mod tests {
                 if let Some(note) = Note::from_parts(
                     recipient,
                     value,
+                    AssetBase::zatoshi(),
                     rho,
                     RandomSeed::random(&mut rng, &rho),
                     bundle_version.note_version(),

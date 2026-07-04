@@ -230,9 +230,9 @@ impl Domain for OrchardZSADomain {
     fn parse_note_plaintext_without_memo_ivk(
         &self,
         ivk: &Self::IncomingViewingKey,
-        plaintext: &Self::CompactNotePlaintextBytes,
+        plaintext: &[u8],
     ) -> Option<(Self::Note, Self::Recipient)> {
-        parse_note_plaintext(self.rho, plaintext.as_ref(), |diversifier| {
+        parse_note_plaintext(self.rho, plaintext, |diversifier| {
             Some(DiversifiedTransmissionKey::derive(ivk, diversifier))
         })
     }
@@ -240,9 +240,9 @@ impl Domain for OrchardZSADomain {
     fn parse_note_plaintext_without_memo_ovk(
         &self,
         pk_d: &Self::DiversifiedTransmissionKey,
-        plaintext: &Self::CompactNotePlaintextBytes,
+        plaintext: &[u8],
     ) -> Option<(Self::Note, Self::Recipient)> {
-        parse_note_plaintext(self.rho, plaintext.as_ref(), |_| Some(*pk_d))
+        parse_note_plaintext(self.rho, plaintext, |_| Some(*pk_d))
     }
 
     fn split_plaintext_at_memo(

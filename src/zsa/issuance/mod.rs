@@ -1885,7 +1885,7 @@ mod tests {
     fn verify_rho_computation_for_issuance_notes() {
         use crate::{
             builder::{Builder, BundleType},
-            bundle::BundleVersion,
+            bundle::{BundleVersion, TxVersion},
             circuit::ProvingKey,
             keys::SpendAuthorizingKey,
             note::ExtractedNoteCommitment,
@@ -1898,7 +1898,7 @@ mod tests {
         use shardtree::ShardTree;
 
         // Setup keys
-        let pk = ProvingKey::build::<OrchardZSA>();
+        let pk = ProvingKey::build();
         let sk = SpendingKey::from_bytes([1; 32]).unwrap();
         let fvk = FullViewingKey::from(&sk);
         let recipient = fvk.address_at(0u32, Scope::External);
