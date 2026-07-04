@@ -1249,6 +1249,11 @@ pub struct Instance {
     enable_spend: bool,
     enable_output: bool,
     cross_address_disabled: bool,
+    /// ZSA circuit: whether ZSA custom asset logic is active.
+    /// Shares circuit index 9 with `cross_address_disabled` — only
+    /// one circuit flavor is active per proof, so no conflict.
+    #[cfg(feature = "zsa")]
+    pub(crate) enable_zsa: bool,
 }
 
 impl Instance {
@@ -1293,6 +1298,8 @@ impl Instance {
             enable_spend: flags.spends_enabled(),
             enable_output: flags.outputs_enabled(),
             cross_address_disabled: !flags.cross_address_enabled(),
+            #[cfg(feature = "zsa")]
+            enable_zsa: false,
         })
     }
 

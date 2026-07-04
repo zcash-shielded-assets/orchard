@@ -17,7 +17,7 @@ use blake2b_simd::Hash;
 use group::ff::PrimeField;
 use zcash_note_encryption::{
     note_bytes::NoteBytes, note_bytes::NoteBytesData, BatchDomain, Domain, EphemeralKeyBytes,
-    OutPlaintextBytes, OutgoingCipherKey, OUT_PLAINTEXT_SIZE,
+    OutPlaintextBytes, OutgoingCipherKey, ShieldedOutput, OUT_PLAINTEXT_SIZE,
 };
 
 use crate::{
@@ -81,16 +81,17 @@ where
     )
     .into_option()?;
 
-    // Read the ZSA asset_desc_hash from the note plaintext
-    let _asset_desc_hash: [u8; ZSA_ASSET_SIZE] = plaintext
+    // Deserialize the AssetBase from the note plaintext
+    let asset_bytes: [u8; ZSA_ASSET_SIZE] = plaintext
         [COMPACT_NOTE_SIZE_VANILLA..COMPACT_NOTE_SIZE_ZSA]
         .try_into()
         .ok()?;
+    let asset = AssetBase::from_bytes(&asset_bytes).into_option()?;
 
     let pk_d = get_validated_pk_d(&diversifier)?;
     let recipient = Address::from_parts(diversifier, pk_d);
 
-    let note = Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, rseed, NoteVersion::V3).into_option()?;
+    let note = Note::from_parts(recipient, value, asset, rho, rseed, NoteVersion::V3).into_option()?;
 
     Some((note, recipient))
 }
@@ -188,10 +189,9 @@ impl Domain for OrchardZSADomain {
             .copy_from_slice(&note.value().to_bytes());
         np[NOTE_RSEED_OFFSET..COMPACT_NOTE_SIZE_VANILLA]
             .copy_from_slice(note.rseed().as_bytes());
-        // ZSA: 32 bytes for asset_desc_hash — for now, zero-fill.
-        // When full AssetBase support is added, serialize it here.
-        // np[COMPACT_NOTE_SIZE_VANILLA..COMPACT_NOTE_SIZE_ZSA] = ...
-        // memo starts at COMPACT_NOTE_SIZE_ZSA
+        // ZSA: serialize the AssetBase (32-byte compressed Pallas point)
+        np[COMPACT_NOTE_SIZE_VANILLA..COMPACT_NOTE_SIZE_ZSA]
+            .copy_from_slice(&note.asset().to_bytes());
         np[COMPACT_NOTE_SIZE_ZSA..].copy_from_slice(memo);
         NoteBytesData(np)
     }
@@ -283,5 +283,27 @@ impl BatchDomain for OrchardZSADomain {
                 secret.map(|dhsecret| SharedSecret::kdf_orchard_inner(dhsecret, ephemeral_key))
             })
             .collect()
+    }
+}
+
+impl<T> ShieldedOutput<OrchardZSADomain> for crate::action::Action<T, OrchardZSADomain> {
+    fn ephemeral_key(&self) -> EphemeralKeyBytes {
+        EphemeralKeyBytes(self.encrypted_note().epk_bytes)
+    }
+
+    fn cmstar_bytes(&self) -> <OrchardZSADomain as Domain>::ExtractedCommitmentBytes {
+        self.cmx().to_bytes()
+    }
+
+    fn enc_ciphertext(&self) -> Option<&<OrchardZSADomain as Domain>::NoteCiphertextBytes> {
+        Some(&self.encrypted_note().enc_ciphertext)
+    }
+
+    fn enc_ciphertext_compact(&self) -> <OrchardZSADomain as Domain>::CompactNoteCiphertextBytes {
+        let enc = self.encrypted_note().enc_ciphertext.as_ref();
+        let mut compact = [0u8; COMPACT_NOTE_SIZE_ZSA];
+        let end = enc.len().min(COMPACT_NOTE_SIZE_ZSA);
+        compact[..end].copy_from_slice(&enc[..end]);
+        NoteBytesData(compact)
     }
 }
