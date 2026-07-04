@@ -920,22 +920,23 @@ impl fmt::Display for Error {
 #[cfg(test)]
 mod tests {
     use crate::{
-        issuance::Error::{
-            CannotBeFirstIssuance, IncorrectRhoDerivation, InvalidIssueBundleSig,
-            InvalidIssueValidatingKey, IssueActionNotFound,
-            IssueActionPreviouslyFinalizedAssetBase, IssueActionWithoutNoteNotFinalized,
-            IssueBundleIkMismatchAssetBase, MissingReferenceNoteOnFirstIssuance, ValueOverflow,
-        },
-        issuance::{
+        keys::{FullViewingKey, Scope, SpendingKey},
+        note::{AssetBase, AssetId, Nullifier, Rho},
+        value::NoteValue,
+        zsa::issuance::{
             auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
             compute_asset_desc_hash, create_reference_note, is_reference_note,
+            rho_for_issuance_note,
             sighash_kind::{BIP340IssueAuthSig, IssueSighashKind},
             verify_issue_bundle, AssetRecord, AwaitingNullifier, IssuanceFlags, IssueAction,
             IssueBundle, IssueInfo, Signed,
+            Error::{
+                CannotBeFirstIssuance, IncorrectRhoDerivation, InvalidIssueBundleSig,
+                InvalidIssueValidatingKey, IssueActionNotFound,
+                IssueActionPreviouslyFinalizedAssetBase, IssueActionWithoutNoteNotFinalized,
+                IssueBundleIkMismatchAssetBase, MissingReferenceNoteOnFirstIssuance, ValueOverflow,
+            },
         },
-        keys::{FullViewingKey, Scope, SpendingKey},
-        note::{rho_for_issuance_note, AssetBase, AssetId, Nullifier, Rho},
-        value::NoteValue,
         Address, Note,
     };
     use alloc::collections::{BTreeMap, BTreeSet};
@@ -1885,7 +1886,7 @@ mod tests {
         use crate::{
             builder::{Builder, BundleType},
             circuit::ProvingKey,
-            flavor::OrchardZSA,
+            zsa::flavor::OrchardZSA,
             keys::SpendAuthorizingKey,
             note::ExtractedNoteCommitment,
             tree::{MerkleHashOrchard, MerklePath},
@@ -2055,7 +2056,7 @@ mod tests {
 #[cfg_attr(docsrs, doc(cfg(feature = "test-dependencies")))]
 pub mod testing {
     use crate::{
-        issuance::{
+        zsa::issuance::{
             auth::{
                 testing::arb_issuance_validating_key, IssueAuthSig, IssueAuthSigScheme,
                 IssueValidatingKey, ZSASchnorr,
@@ -2064,7 +2065,6 @@ pub mod testing {
             AwaitingNullifier, BIP340IssueAuthSig, IssuanceFlags, IssueAction, IssueBundle,
             Prepared, Signed,
         },
-        note::testing::arb_zsa_note,
     };
     use nonempty::NonEmpty;
     use proptest::collection::vec;

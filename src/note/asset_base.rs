@@ -237,7 +237,7 @@ pub mod testing {
 #[cfg(feature = "zsa")]
 mod tests {
     use crate::{
-        issuance::auth::{IssueValidatingKey, ZSASchnorr},
+        zsa::issuance::auth::{IssueValidatingKey, ZSASchnorr},
         note::{AssetBase, AssetId},
     };
 

@@ -65,6 +65,11 @@ impl BundleType {
         bundle_required: false,
     };
 
+    /// The default bundle type for ZSA transactions.
+    pub const DEFAULT_ZSA: BundleType = BundleType::Transactional {
+        bundle_required: false,
+    };
+
     /// Returns the number of logical actions that the builder will produce in constructing a bundle
     /// of this type with the given `flags`, given the specified numbers of spends and outputs.
     ///

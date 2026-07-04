@@ -419,6 +419,13 @@ impl Note {
         self.rho
     }
 
+    /// Returns whether this note has a non-zero rho value.
+    /// Used by issuance tests to check if rho has been set.
+    #[cfg(test)]
+    pub(crate) fn has_rho(&self) -> bool {
+        self.rho.0 != pallas::Base::zero()
+    }
+
     /// Returns the version of this note.
     pub fn version(&self) -> NoteVersion {
         self.version

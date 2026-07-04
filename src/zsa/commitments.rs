@@ -99,15 +99,15 @@ pub(crate) fn hash_issue_bundle_auth_data(
 mod tests {
     use super::*;
     use crate::{
-        issuance::{
+        keys::{FullViewingKey, Scope, SpendingKey},
+        note::Nullifier,
+        value::NoteValue,
+        zsa::issuance::{
             auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
             compute_asset_desc_hash,
             sighash_kind::test_sighash_info_for_kind,
             AwaitingSighash, IssueInfo,
         },
-        keys::{FullViewingKey, Scope, SpendingKey},
-        note::Nullifier,
-        value::NoteValue,
     };
     use nonempty::NonEmpty;
     use rand::{rngs::StdRng, SeedableRng};
