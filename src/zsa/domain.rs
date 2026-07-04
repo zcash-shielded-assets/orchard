@@ -1,7 +1,7 @@
 //! ZSA-specific note encryption domain for 84-byte compact notes.
 //!
 //! In ZSA, the compact note layout is:
-//! ```
+//! ```text
 //! [0]:        version (0x03)
 //! [1..12]:    diversifier (11)
 //! [12..20]:   value (8)
