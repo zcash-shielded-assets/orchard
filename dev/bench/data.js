@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783129646546,
+  "lastUpdate": 1783130577844,
   "repoUrl": "https://github.com/zcash-shielded-assets/orchard",
   "entries": {
     "Orchard Benchmarks": [
@@ -899,6 +899,186 @@ window.BENCHMARK_DATA = {
             "name": "default_address",
             "value": 522107,
             "range": "± 767",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "hanh425@gmail.com",
+            "name": "Hanh Huynh Huu",
+            "username": "hhanh00"
+          },
+          "committer": {
+            "email": "hanh425@gmail.com",
+            "name": "Hanh Huynh Huu",
+            "username": "hhanh00"
+          },
+          "distinct": true,
+          "id": "d964903c70db8bf1e2b8578868cdd6d4952da8d1",
+          "message": "Complete ZSA integration: AssetBase, issuance, burn, circuit\n\n- AssetBase in Note, Note::asset() accessor\n- NoteValue::add, Note::new_issue_note, Note::update_rho_for_issuance_note\n- rho_for_issuance_note function\n- reference_keys and flavor modules\n- zsa-circuit feature for ZSA circuit (separate from zsa feature)\n- All ZSA modules behind #[cfg(feature = \"zsa\")] or zsa-circuit\n- Fixed import paths in moved zsa/ files\n- Added [patch.crates-io] for zcash_spec fork",
+          "timestamp": "2026-07-04T09:51:20+08:00",
+          "tree_id": "c74342bed042eefdefe736f2c0045e6c58845212",
+          "url": "https://github.com/zcash-shielded-assets/orchard/commit/d964903c70db8bf1e2b8578868cdd6d4952da8d1"
+        },
+        "date": 1783130576185,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "proving/bundle/1",
+            "value": 2640242644,
+            "range": "± 11551165",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/2",
+            "value": 2621933997,
+            "range": "± 6919331",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/3",
+            "value": 3767897553,
+            "range": "± 40653522",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/4",
+            "value": 4897131600,
+            "range": "± 17058760",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/1",
+            "value": 20936143,
+            "range": "± 259595",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/2",
+            "value": 20930693,
+            "range": "± 100981",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/3",
+            "value": 23848510,
+            "range": "± 110038",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/4",
+            "value": 26998580,
+            "range": "± 240692",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/valid",
+            "value": 1326744,
+            "range": "± 15546",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/invalid",
+            "value": 108320,
+            "range": "± 120",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/compact-valid",
+            "value": 1325709,
+            "range": "± 8850",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "compact-note-decryption/invalid",
+            "value": 1150991291,
+            "range": "± 954819",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/10",
+            "value": 13985685,
+            "range": "± 50598",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/10",
+            "value": 1856741,
+            "range": "± 3886",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/10",
+            "value": 13960284,
+            "range": "± 36028",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/10",
+            "value": 1817980,
+            "range": "± 15534",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/50",
+            "value": 69898790,
+            "range": "± 89274",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/50",
+            "value": 9161219,
+            "range": "± 13090",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/50",
+            "value": 69770196,
+            "range": "± 123910",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/50",
+            "value": 9019385,
+            "range": "± 20400",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/100",
+            "value": 139762599,
+            "range": "± 218576",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/100",
+            "value": 18268821,
+            "range": "± 360024",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/100",
+            "value": 139487212,
+            "range": "± 909826",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/100",
+            "value": 17976216,
+            "range": "± 115625",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "derive_fvk",
+            "value": 396112,
+            "range": "± 651",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "default_address",
+            "value": 428900,
+            "range": "± 423",
             "unit": "ns/iter"
           }
         ]
