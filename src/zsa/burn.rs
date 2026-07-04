@@ -4,15 +4,15 @@
 //!
 use core::fmt;
 
-#[cfg(feature = "zsa-issuance")]
+#[cfg(feature = "zsa")]
 use alloc::collections::BTreeMap;
 
-#[cfg(feature = "zsa-issuance")]
-use crate::{issuance::AssetRecord, note::AssetBase, value::NoteValue};
+#[cfg(feature = "zsa")]
+use crate::{note::AssetBase, value::NoteValue, zsa::issuance::AssetRecord};
 
 /// Maximum burn value.
 /// Burns must fit in both u64 and i64 for value balance calculations.
-#[cfg(feature = "zsa-issuance")]
+#[cfg(feature = "zsa")]
 pub const MAX_BURN_VALUE: u64 = (1u64 << 63) - 1;
 
 /// Possible errors that can occur during bundle burn validation.
@@ -81,7 +81,7 @@ impl fmt::Display for BurnError {
 /// * Any asset in the `burn` vector is not unique (`BurnError::DuplicateAsset`).
 /// * Any asset is not found in the global issuance state (`BurnError::AssetNotFoundInState`).
 /// * Any asset has insufficient supply for the burn amount (`BurnError::InsufficientSupply`).
-#[cfg(feature = "zsa-issuance")]
+#[cfg(feature = "zsa")]
 pub fn validate_bundle_burn(
     burn: impl IntoIterator<Item = (AssetBase, NoteValue)>,
     mut get_current_record: impl FnMut(&AssetBase) -> Option<AssetRecord>,
@@ -124,7 +124,7 @@ pub fn validate_bundle_burn(
     Ok(new_records)
 }
 
-#[cfg(feature = "zsa-issuance")]
+#[cfg(feature = "zsa")]
 #[cfg(test)]
 mod tests {
     use super::*;

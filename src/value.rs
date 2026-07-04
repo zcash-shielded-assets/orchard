@@ -129,6 +129,12 @@ impl NoteValue {
     pub(crate) fn to_le_bits(self) -> BitArray<[u8; 8], Lsb0> {
         BitArray::<_, Lsb0>::new(self.0.to_le_bytes())
     }
+
+    /// Adds two note values, returning `None` on overflow.
+    #[cfg(feature = "zsa")]
+    pub(crate) fn add(self, rhs: Self) -> Option<Self> {
+        self.0.checked_add(rhs.0).map(NoteValue)
+    }
 }
 
 #[cfg(feature = "circuit")]

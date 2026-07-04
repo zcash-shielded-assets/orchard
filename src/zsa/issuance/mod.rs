@@ -21,12 +21,29 @@ use nonempty::NonEmpty;
 use pasta_curves::pallas;
 use rand::RngCore;
 
+use ff::PrimeField;
+
 use crate::{
-    bundle::commitments::{hash_issue_bundle_auth_data, hash_issue_bundle_txid_data},
-    note::{rho_for_issuance_note, AssetBase, AssetId, ExtractedNoteCommitment, Nullifier},
+    note::{AssetBase, AssetId, ExtractedNoteCommitment, Nullifier, Rho},
+    spec::{to_base, PrfExpand},
+    zsa::commitments::{hash_issue_bundle_auth_data, hash_issue_bundle_txid_data},
     value::NoteValue,
     Address, Note,
 };
+
+/// Computes the rho value for an issuance note as defined in ZIP 227.
+pub(crate) fn rho_for_issuance_note(
+    nullifier: &Nullifier,
+    index_action: u32,
+    index_note: u32,
+) -> Rho {
+    let rho_field = to_base(PrfExpand::ORCHARD_DERIVED_ISSUE_RHO.with(
+        &nullifier.to_bytes(),
+        &index_action.to_le_bytes(),
+        &index_note.to_le_bytes(),
+    ));
+    Rho::from_bytes(&rho_field.to_repr()).unwrap()
+}
 
 use Error::{
     AssetBaseCannotBeIdentityPoint, CannotBeFirstIssuance, IncorrectRhoDerivation,
@@ -38,7 +55,7 @@ use Error::{
 pub mod auth;
 pub mod sighash_kind;
 
-pub use crate::constants::reference_keys::ReferenceKeys;
+pub use crate::zsa::reference_keys::ReferenceKeys;
 
 use auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr};
 use sighash_kind::{BIP340IssueAuthSig, IssueSighashKind};

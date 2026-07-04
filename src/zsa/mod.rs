@@ -13,9 +13,14 @@
 mod domain;
 #[cfg(feature = "zsa")]
 pub mod issuance;
+#[cfg(feature = "zsa")]
 pub mod burn;
+#[cfg(feature = "zsa")]
 pub mod commitments;
-#[cfg(feature = "circuit")]
+#[cfg(feature = "zsa-circuit")]
 pub mod circuit;
+pub(crate) mod reference_keys;
+#[cfg(feature = "zsa")]
+pub mod flavor;
 
 pub use domain::OrchardZSADomain;

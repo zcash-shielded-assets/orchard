@@ -1,12 +1,24 @@
 //! Issuance-related commitment functions (ZSA feature)
 
 use alloc::vec::Vec;
-use blake2b_simd::Hash as Blake2bHash;
+use blake2b_simd::{Hash as Blake2bHash, Params, State};
 
-use crate::{
-    bundle::commitments::{get_compact_size, hasher},
-    issuance::{sighash_kind::IssueSighashKind, IssueAuth, IssueBundle, Signed},
-};
+/// Returns a BLAKE2b hasher with 32-byte output and the given personalization.
+pub(crate) fn hasher(personal: &[u8; 16]) -> State {
+    Params::new().hash_length(32).personal(personal).to_state()
+}
+
+/// Encodes a length as a compact size as defined in the Zcash protocol.
+pub fn get_compact_size(size: usize) -> Vec<u8> {
+    match size {
+        s if s < 253 => vec![s as u8],
+        s if s <= 0xFFFF => [&[253_u8], &(s as u16).to_le_bytes()[..]].concat(),
+        s if s <= 0xFFFFFFFF => [&[254_u8], &(s as u32).to_le_bytes()[..]].concat(),
+        s => [&[255_u8], &(s as u64).to_le_bytes()[..]].concat(),
+    }
+}
+
+use crate::zsa::issuance::{sighash_kind::IssueSighashKind, IssueAuth, IssueBundle, Signed};
 
 const ZCASH_ORCHARD_ZSA_ISSUE_PERSONALIZATION: &[u8; 16] = b"ZTxIdSAIssueHash";
 const ZCASH_ORCHARD_ZSA_ISSUE_ACTION_PERSONALIZATION: &[u8; 16] = b"ZTxIdIssuActHash";

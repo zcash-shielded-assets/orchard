@@ -9,16 +9,16 @@ use crate::constants::fixed_bases::{VALUE_COMMITMENT_PERSONALIZATION, ZATOSHI_AS
 #[cfg(test)]
 use rand_core::CryptoRngCore;
 
-#[cfg(feature = "zsa-issuance")]
+#[cfg(feature = "zsa")]
 use {
     crate::constants::fixed_bases::ZSA_ASSET_BASE_PERSONALIZATION,
-    crate::issuance::auth::{IssueValidatingKey, ZSASchnorr},
+    crate::zsa::issuance::auth::{IssueValidatingKey, ZSASchnorr},
     alloc::vec::Vec,
     blake2b_simd::{Hash as Blake2bHash, Params},
 };
 
 /// Asset Identifier
-#[cfg(feature = "zsa-issuance")]
+#[cfg(feature = "zsa")]
 #[derive(Debug)]
 pub enum AssetId<'a> {
     /// Version V0 of AssetId
@@ -30,7 +30,7 @@ pub enum AssetId<'a> {
     },
 }
 
-#[cfg(feature = "zsa-issuance")]
+#[cfg(feature = "zsa")]
 impl<'a> AssetId<'a> {
     /// Generates a new V0 AssetId.
     pub fn new_v0(ik: &'a IssueValidatingKey<ZSASchnorr>, asset_desc_hash: &'a [u8; 32]) -> Self {
@@ -92,7 +92,7 @@ impl Ord for AssetBase {
 }
 
 /// Personalization for the ZSA asset digest generator
-#[cfg(feature = "zsa-issuance")]
+#[cfg(feature = "zsa")]
 pub const ZSA_ASSET_DIGEST_PERSONALIZATION: &[u8; 16] = b"ZSA-Asset-Digest";
 
 impl AssetBase {
@@ -119,7 +119,7 @@ impl AssetBase {
     /// # Panics
     ///
     /// Panics if the derived AssetBase is the identity point.
-    #[cfg(feature = "zsa-issuance")]
+    #[cfg(feature = "zsa")]
     #[allow(non_snake_case)]
     pub fn custom(asset_id: &AssetId<'_>) -> Self {
         let asset_digest = asset_id.asset_digest();
@@ -234,7 +234,7 @@ pub mod testing {
 }
 
 #[cfg(test)]
-#[cfg(feature = "zsa-issuance")]
+#[cfg(feature = "zsa")]
 mod tests {
     use crate::{
         issuance::auth::{IssueValidatingKey, ZSASchnorr},
@@ -246,7 +246,7 @@ mod tests {
         let test_vectors = crate::test_vectors::asset_base::TEST_VECTORS;
 
         for tv in test_vectors {
-            let asset_desc_hash = crate::issuance::compute_asset_desc_hash(
+            let asset_desc_hash = crate::zsa::issuance::compute_asset_desc_hash(
                 &nonempty::NonEmpty::from_slice(&tv.description).unwrap(),
             );
             let calculated_asset_base = AssetBase::custom(&AssetId::new_v0(

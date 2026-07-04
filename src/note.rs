@@ -1,6 +1,8 @@
 //! Data structures used for note construction.
 pub(crate) mod asset_base;
 pub use self::asset_base::AssetBase;
+#[cfg(feature = "zsa")]
+pub use self::asset_base::AssetId;
 
 use core::fmt;
 use memuse::DynamicUsage;
@@ -210,6 +212,44 @@ impl Note {
         }
     }
 
+    /// Creates a new issuance note with zero rho.
+    #[cfg(feature = "zsa")]
+    pub(crate) fn new_issue_note(
+        recipient: Address,
+        value: NoteValue,
+        asset: AssetBase,
+        mut rng: impl RngCore,
+    ) -> Self {
+        let rho = Rho::from_bytes(&pallas::Base::zero().to_repr()).unwrap();
+        let rseed = RandomSeed::random(&mut rng, &rho);
+        Note::from_parts(recipient, value, asset, rho, rseed).unwrap()
+    }
+
+    /// Updates the rho and rseed for issuance note derivation.
+    #[cfg(feature = "zsa")]
+    pub(crate) fn update_rho_for_issuance_note(
+        &mut self,
+        nullifier: &Nullifier,
+        index_action: u32,
+        index_note: u32,
+        mut rng: impl RngCore,
+    ) {
+        use crate::spec::{to_base, PrfExpand};
+        use ff::PrimeField;
+        let rho_field = to_base(PrfExpand::ORCHARD_DERIVED_ISSUE_RHO.with(
+            &nullifier.to_bytes(),
+            &index_action.to_le_bytes(),
+            &index_note.to_le_bytes(),
+        ));
+        self.rho = Rho::from_bytes(&rho_field.to_repr()).unwrap();
+        loop {
+            self.rseed = RandomSeed::random(&mut rng, &self.rho);
+            if self.commitment_inner().is_some().into() {
+                break;
+            }
+        }
+    }
+
     /// Generates a dummy spent note.
     ///
     /// Defined in [Zcash Protocol Spec § 4.8.3: Dummy Notes (Orchard)][orcharddummynotes].
@@ -242,6 +282,11 @@ impl Note {
     /// Returns the value of this note.
     pub fn value(&self) -> NoteValue {
         self.value
+    }
+
+    /// Returns the asset of this note.
+    pub fn asset(&self) -> AssetBase {
+        self.asset
     }
 
     /// Returns the rseed value of this note.
