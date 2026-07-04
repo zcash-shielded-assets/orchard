@@ -600,7 +600,6 @@ mod tests {
         OrchardNoteEncryption,
     };
     use zcash_note_encryption::note_bytes::NoteBytesData;
-    use super::OrchardDomain;
     use crate::{
         action::Action,
         keys::{

@@ -921,7 +921,7 @@ impl fmt::Display for Error {
 mod tests {
     use crate::{
         keys::{FullViewingKey, Scope, SpendingKey},
-        note::{AssetBase, AssetId, Nullifier, Rho},
+        note::{AssetBase, AssetId, NoteVersion, Nullifier, RandomSeed, Rho},
         value::NoteValue,
         zsa::issuance::{
             auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
@@ -1615,16 +1615,21 @@ mod tests {
         let mut rng = OsRng;
         let (mut signed, _) = new_signed_bundle(&params, b"Asset description", 5);
 
-        let note = Note::new(
-            params.recipient,
-            NoteValue::from_raw(5),
-            AssetBase::custom(&AssetId::new_v0(
-                signed.ik(),
-                &asset_desc_hash(b"zsa_asset"),
-            )),
-            rho_for_issuance_note(&params.first_nullifier, 0, 2),
-            &mut rng,
-        );
+        let rho = rho_for_issuance_note(&params.first_nullifier, 0, 2);
+        let note = loop {
+            let n = Note::from_parts(
+                params.recipient,
+                NoteValue::from_raw(5),
+                AssetBase::custom(&AssetId::new_v0(
+                    signed.ik(),
+                    &asset_desc_hash(b"zsa_asset"),
+                )),
+                rho,
+                RandomSeed::random(&mut rng, &rho),
+                NoteVersion::V3,
+            );
+            if n.is_some().into() { break n.unwrap(); }
+        };
 
         signed.actions.first_mut().notes.push(note);
 
@@ -1644,13 +1649,18 @@ mod tests {
         let incorrect_isk = IssueAuthKey::<ZSASchnorr>::random(&mut rng);
         let incorrect_ik = IssueValidatingKey::from(&incorrect_isk);
 
-        let note = Note::new(
-            params.recipient,
-            NoteValue::from_raw(55),
-            AssetBase::custom(&AssetId::new_v0(&incorrect_ik, &asset_desc_hash(b"Asset"))),
-            rho_for_issuance_note(&params.first_nullifier, 0, 0),
-            &mut rng,
-        );
+        let rho = rho_for_issuance_note(&params.first_nullifier, 0, 0);
+        let note = loop {
+            let n = Note::from_parts(
+                params.recipient,
+                NoteValue::from_raw(55),
+                AssetBase::custom(&AssetId::new_v0(&incorrect_ik, &asset_desc_hash(b"Asset"))),
+                rho,
+                RandomSeed::random(&mut rng, &rho),
+                NoteVersion::V3,
+            );
+            if n.is_some().into() { break n.unwrap(); }
+        };
 
         signed.actions.first_mut().notes = vec![note];
 
@@ -1664,7 +1674,7 @@ mod tests {
     #[test]
     fn finalize_flag_serialization() {
         let mut rng = OsRng;
-        let (_, _, note) = Note::dummy(&mut rng, None);
+        let (_, _, note) = Note::dummy(&mut rng, None, NoteVersion::V2);
 
         let asset_desc_hash = asset_desc_hash(b"Asset description");
 
@@ -1898,7 +1908,7 @@ mod tests {
         use shardtree::ShardTree;
 
         // Setup keys
-        let pk = ProvingKey::build();
+        let pk = ProvingKey::build(crate::circuit::OrchardCircuitVersion::FixedPostNu6_2);
         let sk = SpendingKey::from_bytes([1; 32]).unwrap();
         let fvk = FullViewingKey::from(&sk);
         let recipient = fvk.address_at(0u32, Scope::External);
@@ -1908,13 +1918,18 @@ mod tests {
         // Setup note and merkle tree
         let mut rng = OsRng;
         let asset1 = AssetBase::custom(&AssetId::new_v0(&ik, &asset_desc_hash(b"zsa_asset1")));
-        let note1 = Note::new(
-            recipient,
-            NoteValue::from_raw(10),
-            asset1,
-            Rho::from_nf_old(Nullifier::dummy(&mut rng)),
-            &mut rng,
-        );
+        let rho1 = Rho::from_nf_old(Nullifier::dummy(&mut rng));
+        let note1 = loop {
+            let n = Note::from_parts(
+                recipient,
+                NoteValue::from_raw(10),
+                asset1,
+                rho1,
+                RandomSeed::random(&mut rng, &rho1),
+                NoteVersion::V3,
+            );
+            if n.is_some().into() { break n.unwrap(); }
+        };
         // Build the merkle tree with only note1
         let (merkle_path, anchor): (MerklePath, Anchor) = {
             let cmx: ExtractedNoteCommitment = note1.commitment().into();
@@ -1941,9 +1956,9 @@ mod tests {
         };
 
         // Create a transfer bundle
-        let bundle_version = BundleVersion::orchard_v3();
+        let bundle_version = BundleVersion::orchard_v2();
         let flags = bundle_version.default_flags();
-        let mut builder = Builder::new(BundleType::DEFAULT_ZSA, bundle_version, anchor, flags).unwrap();
+        let mut builder = Builder::new(BundleType::DEFAULT_ZSA, bundle_version, flags, anchor).unwrap();
         builder.add_spend(fvk, note1, merkle_path).unwrap();
         builder
             .add_output(None, recipient, NoteValue::from_raw(5), [0u8; 512])
@@ -2058,6 +2073,7 @@ mod tests {
 #[cfg_attr(docsrs, doc(cfg(feature = "test-dependencies")))]
 pub mod testing {
     use crate::{
+        note::testing::arb_zsa_note,
         zsa::issuance::{
             auth::{
                 testing::arb_issuance_validating_key, IssueAuthSig, IssueAuthSigScheme,
