@@ -31,7 +31,7 @@ use halo2_gadgets::{
     },
     utilities::{
         bool_check,
-        lookup_range_check::{LookupRangeCheck, LookupRangeCheckConfig},
+        lookup_range_check::{LookupRangeCheck, LookupRangeCheckConfig, PallasLookupRangeCheck},
         FieldValue, RangeConstrained,
     },
 };
@@ -1425,43 +1425,44 @@ impl YCanonicity {
 /// Sinsemilla configuration.
 #[allow(non_snake_case)]
 #[derive(Clone, Debug)]
-pub struct NoteCommitConfig {
-    b: DecomposeB,
-    d: DecomposeD,
-    e: DecomposeE,
-    g: DecomposeG,
-    h: DecomposeH,
-    g_d: GdCanonicity,
-    pk_d: PkdCanonicity,
-    value: ValueCanonicity,
-    rho: RhoCanonicity,
-    psi: PsiCanonicity,
-    y_canon: YCanonicity,
-    advices: [Column<Advice>; 10],
-    sinsemilla_config:
-        SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+pub struct NoteCommitConfig<Lookup: PallasLookupRangeCheck = LookupRangeCheckConfig<pallas::Base, 10>> {
+    pub(crate) b: DecomposeB,
+    pub(crate) d: DecomposeD,
+    pub(crate) e: DecomposeE,
+    pub(crate) g: DecomposeG,
+    pub(crate) h: DecomposeH,
+    pub(crate) g_d: GdCanonicity,
+    pub(crate) pk_d: PkdCanonicity,
+    pub(crate) value: ValueCanonicity,
+    pub(crate) rho: RhoCanonicity,
+    pub(crate) psi: PsiCanonicity,
+    pub(crate) y_canon: YCanonicity,
+    pub(crate) advices: [Column<Advice>; 10],
+    pub(crate) sinsemilla_config:
+        SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
 }
 
 /// A Halo 2 chip that proves correct evaluation of the `NoteCommit` gadget.
 #[derive(Clone, Debug)]
-pub struct NoteCommitChip {
-    config: NoteCommitConfig,
+pub struct NoteCommitChip<Lookup: PallasLookupRangeCheck = LookupRangeCheckConfig<pallas::Base, 10>> {
+    config: NoteCommitConfig<Lookup>,
 }
 
-impl NoteCommitChip {
+impl<Lookup: PallasLookupRangeCheck> NoteCommitChip<Lookup> {
     /// Configures the chip's gates, Sinsemilla instances, and canonicity checks.
     #[allow(non_snake_case)]
     #[allow(clippy::many_single_char_names)]
     #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-    pub(in crate::circuit) fn configure(
+    pub(crate) fn configure(
         meta: &mut ConstraintSystem<pallas::Base>,
         advices: [Column<Advice>; 10],
         sinsemilla_config: SinsemillaConfig<
             OrchardHashDomains,
             OrchardCommitDomains,
             OrchardFixedBases,
+            Lookup,
         >,
-    ) -> NoteCommitConfig {
+    ) -> NoteCommitConfig<Lookup> {
         // Useful constants
         let two = pallas::Base::from(2);
         let two_pow_2 = pallas::Base::from(1 << 2);
@@ -1574,14 +1575,14 @@ impl NoteCommitChip {
 
     /// Constructs the chip from a [`NoteCommitConfig`].
     #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-    pub(in crate::circuit) fn construct(config: NoteCommitConfig) -> Self {
+    pub(crate) fn construct(config: NoteCommitConfig<Lookup>) -> Self {
         Self { config }
     }
 }
 
 /// Gadget functions for `NoteCommit` operations.
 #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-pub(in crate::circuit) mod gadgets {
+pub(crate) mod gadgets {
     use halo2_proofs::circuit::{Chip, Value};
 
     use super::*;
@@ -1591,7 +1592,7 @@ pub(in crate::circuit) mod gadgets {
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-    pub(in crate::circuit) fn note_commit(
+    pub(crate) fn note_commit(
         mut layouter: impl Layouter<pallas::Base>,
         chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
         ecc_chip: EccChip<OrchardFixedBases>,
@@ -2380,4 +2381,12 @@ mod tests {
             assert_eq!(prover.verify(), Ok(()));
         }
     }
+}
+
+/// ZSA-specific note commitment parameters.
+#[cfg(feature = "zsa-circuit")]
+pub struct ZsaNoteCommitParams {
+    pub cond_swap_chip: halo2_gadgets::utilities::cond_swap::CondSwapChip<pallas::Base>,
+    pub asset: halo2_gadgets::ecc::NonIdentityPoint<pallas::Affine, halo2_gadgets::ecc::chip::EccChip<crate::constants::OrchardFixedBases>>,
+    pub is_zatoshi_asset: halo2_proofs::circuit::AssignedCell<pallas::Base, pallas::Base>,
 }

@@ -64,3 +64,4 @@ mod tests {
         assert_eq!(t_p + two_pow_254, pallas::Base::zero());
     }
 }
+pub mod nullifier_l;

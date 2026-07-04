@@ -36,7 +36,7 @@ use crate::{
     note::{
         commitment::{NoteCommitTrapdoor, NoteCommitment},
         nullifier::Nullifier,
-        ExtractedNoteCommitment, Note, Rho,
+        AssetBase, ExtractedNoteCommitment, Note, Rho,
     },
     primitives::redpallas::{SpendAuth, VerificationKey},
     spec::NonIdentityPallasPoint,
@@ -61,14 +61,19 @@ use halo2_gadgets::{
 };
 
 #[cfg(not(feature = "unstable-voting-circuits"))]
-mod commit_ivk;
+pub(crate) mod commit_ivk;
 #[cfg(feature = "unstable-voting-circuits")]
 pub mod commit_ivk;
 pub mod gadget;
 #[cfg(not(feature = "unstable-voting-circuits"))]
-mod note_commit;
+pub(crate) mod note_commit;
 #[cfg(feature = "unstable-voting-circuits")]
 pub mod note_commit;
+
+#[cfg(feature = "zsa-circuit")]
+pub(crate) mod derive_nullifier;
+#[cfg(feature = "zsa-circuit")]
+pub(crate) mod value_commit_orchard;
 
 pub use crate::Proof;
 
@@ -86,25 +91,110 @@ const CMX: usize = 6;
 const ENABLE_SPEND: usize = 7;
 const ENABLE_OUTPUT: usize = 8;
 const DISABLE_CROSS_ADDRESS: usize = 9;
+#[cfg(feature = "zsa")]
+pub(crate) const ENABLE_ZSA: usize = 9; // ZSA circuit reuses index 9 with different semantics
+
+/// The `OrchardCircuit` trait defines an interface for vanilla and ZSA circuit flavors.
+#[cfg(feature = "zsa")]
+/// Trait for Orchard protocol flavors (vanilla and ZSA) that implements circuit behavior.
+pub trait OrchardCircuit: Sized + Default {
+    /// The circuit configuration type.
+    type Config: Clone;
+    /// Configures the circuit.
+    fn configure(meta: &mut plonk::ConstraintSystem<pallas::Base>) -> Self::Config;
+    /// Synthesizes the circuit from witnesses.
+    fn synthesize(
+        circuit: &Witnesses,
+        config: Self::Config,
+        layouter: impl Layouter<pallas::Base>,
+    ) -> Result<(), plonk::Error>;
+    /// Builds ZSA-specific additional witnesses.
+    fn build_additional_zsa_witnesses(
+        psi_nf: pallas::Base,
+        asset: AssetBase,
+        split_flag: bool,
+    ) -> Value<AdditionalZsaWitnesses>;
+}
+
+/// ZSA-specific witnesses for the action circuit.
+#[cfg(feature = "zsa")]
+#[derive(Clone, Debug)]
+pub struct AdditionalZsaWitnesses {
+    pub(crate) psi_nf: pallas::Base,
+    pub(crate) asset: AssetBase,
+    pub(crate) split_flag: bool,
+}
+
+/// Witnesses for the Orchard action circuit.
+#[derive(Clone, Debug, Default)]
+pub struct Witnesses {
+    pub(crate) path: Value<[MerkleHashOrchard; MERKLE_DEPTH_ORCHARD]>,
+    pub(crate) pos: Value<u32>,
+    pub(crate) g_d_old: Value<NonIdentityPallasPoint>,
+    pub(crate) pk_d_old: Value<DiversifiedTransmissionKey>,
+    pub(crate) v_old: Value<NoteValue>,
+    pub(crate) rho_old: Value<Rho>,
+    pub(crate) psi_old: Value<pallas::Base>,
+    pub(crate) rcm_old: Value<NoteCommitTrapdoor>,
+    pub(crate) cm_old: Value<NoteCommitment>,
+    pub(crate) alpha: Value<pallas::Scalar>,
+    pub(crate) ak: Value<SpendValidatingKey>,
+    pub(crate) nk: Value<NullifierDerivingKey>,
+    pub(crate) rivk: Value<CommitIvkRandomness>,
+    pub(crate) g_d_new: Value<NonIdentityPallasPoint>,
+    pub(crate) pk_d_new: Value<DiversifiedTransmissionKey>,
+    pub(crate) v_new: Value<NoteValue>,
+    pub(crate) psi_new: Value<pallas::Base>,
+    pub(crate) rcm_new: Value<NoteCommitTrapdoor>,
+    pub(crate) rcv: Value<ValueCommitTrapdoor>,
+    #[cfg(feature = "zsa")]
+    pub(crate) additional_zsa_witnesses: Value<AdditionalZsaWitnesses>,
+}
+
+/// Unpacks additional ZSA witnesses into separate values.
+#[cfg(feature = "zsa")]
+pub(crate) fn unpack(
+    zsa_values: Value<AdditionalZsaWitnesses>,
+) -> (Value<pallas::Base>, Value<AssetBase>, Value<bool>) {
+    (zsa_values.clone().map(|v| v.psi_nf), zsa_values.clone().map(|v| v.asset), zsa_values.map(|v| v.split_flag))
+}
 
 /// Configuration needed to use the Orchard Action circuit.
 #[derive(Clone, Debug)]
 pub struct Config {
-    primary: Column<InstanceColumn>,
-    q_orchard: Selector,
-    advices: [Column<Advice>; 10],
-    add_config: AddConfig,
-    ecc_config: EccConfig<OrchardFixedBases>,
-    poseidon_config: PoseidonConfig<pallas::Base, 3, 2>,
-    merkle_config_1: MerkleConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
-    merkle_config_2: MerkleConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
-    sinsemilla_config_1:
+    pub(crate) primary: Column<InstanceColumn>,
+    pub(crate) q_orchard: Selector,
+    pub(crate) advices: [Column<Advice>; 10],
+    pub(crate) add_config: AddConfig,
+    pub(crate) ecc_config: EccConfig<OrchardFixedBases>,
+    pub(crate) poseidon_config: PoseidonConfig<pallas::Base, 3, 2>,
+    pub(crate) merkle_config_1: MerkleConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+    pub(crate) merkle_config_2: MerkleConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+    pub(crate) sinsemilla_config_1:
         SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
-    sinsemilla_config_2:
+    pub(crate) sinsemilla_config_2:
         SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
-    commit_ivk_config: CommitIvkConfig,
-    old_note_commit_config: NoteCommitConfig,
-    new_note_commit_config: NoteCommitConfig,
+    pub(crate) commit_ivk_config: CommitIvkConfig,
+    pub(crate) old_note_commit_config: NoteCommitConfig,
+    pub(crate) new_note_commit_config: NoteCommitConfig,
+}
+
+// Chip constructors for zsa-circuit.
+#[cfg(feature = "zsa-circuit")]
+impl Config {
+    pub(crate) fn zsa_ecc_chip(&self, version: halo2_gadgets::ecc::chip::CircuitVersion) -> EccChip<OrchardFixedBases> {
+        EccChip::construct(self.ecc_config.clone(), version)
+    }
+    pub(crate) fn zsa_poseidon_chip(&self) -> PoseidonChip<pallas::Base, 3, 2> { PoseidonChip::construct(self.poseidon_config.clone()) }
+    pub(crate) fn zsa_sinsemilla_chip_1(&self) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> { SinsemillaChip::construct(self.sinsemilla_config_1.clone()) }
+    pub(crate) fn zsa_sinsemilla_chip_2(&self) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> { SinsemillaChip::construct(self.sinsemilla_config_2.clone()) }
+    pub(crate) fn zsa_merkle_chip_1(&self) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> { MerkleChip::construct(self.merkle_config_1.clone()) }
+    pub(crate) fn zsa_merkle_chip_2(&self) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> { MerkleChip::construct(self.merkle_config_2.clone()) }
+    pub(crate) fn zsa_commit_ivk_chip(&self) -> CommitIvkChip { CommitIvkChip::construct(self.commit_ivk_config.clone()) }
+    pub(crate) fn zsa_note_commit_chip_old(&self) -> NoteCommitChip { NoteCommitChip::construct(self.old_note_commit_config.clone()) }
+    pub(crate) fn zsa_note_commit_chip_new(&self) -> NoteCommitChip { NoteCommitChip::construct(self.new_note_commit_config.clone()) }
+    pub(crate) fn zsa_add_chip(&self) -> AddChip { AddChip::construct(self.add_config.clone()) }
+    pub(crate) fn zsa_note_commit_chip_old_backup(&self) -> NoteCommitChip { NoteCommitChip::construct(self.old_note_commit_config.clone()) }
 }
 
 /// Selects which version of the Orchard Action circuit to build.

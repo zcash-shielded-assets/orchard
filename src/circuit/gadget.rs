@@ -25,7 +25,7 @@ use halo2_proofs::{
 };
 
 #[cfg(not(feature = "unstable-voting-circuits"))]
-pub(in crate::circuit) mod add_chip;
+pub(crate) mod add_chip;
 /// Addition chip for constraining `a + b = c` in-circuit.
 #[cfg(feature = "unstable-voting-circuits")]
 pub mod add_chip;
@@ -98,7 +98,7 @@ pub(in crate::circuit) trait AddInstruction<F: Field>: Chip<F> {
 /// ever used in equality constraints. We could eliminate them with a
 /// [write-on-copy abstraction](https://github.com/zcash/halo2/issues/334).
 #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-pub(in crate::circuit) fn assign_free_advice<F: Field, V: Copy>(
+pub(crate) fn assign_free_advice<F: Field, V: Copy>(
     mut layouter: impl Layouter<F>,
     column: Column<Advice>,
     value: Value<V>,
@@ -209,3 +209,35 @@ pub(in crate::circuit) fn derive_nullifier<
 pub(in crate::circuit) use crate::circuit::commit_ivk::gadgets::commit_ivk;
 #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
 pub(in crate::circuit) use crate::circuit::note_commit::gadgets::note_commit;
+
+/// Witnesses whether an asset is the zatoshi asset.
+pub(crate) fn assign_is_zatoshi_asset<F: ff::Field>(
+    layouter: impl halo2_proofs::circuit::Layouter<F>,
+    column: halo2_proofs::plonk::Column<halo2_proofs::plonk::Advice>,
+    asset: halo2_proofs::circuit::Value<crate::note::AssetBase>,
+) -> Result<halo2_proofs::circuit::AssignedCell<pasta_curves::Fp, F>, halo2_proofs::plonk::Error>
+where
+    halo2_proofs::plonk::Assigned<F>: for<'v> From<&'v pasta_curves::Fp>,
+{
+    assign_free_advice(
+        layouter,
+        column,
+        asset.map(|a| if bool::from(a.is_zatoshi()) { pasta_curves::pallas::Base::one() } else { pasta_curves::pallas::Base::zero() }),
+    )
+}
+
+/// Witnesses split_flag.
+pub(crate) fn assign_split_flag<F: ff::Field>(
+    layouter: impl halo2_proofs::circuit::Layouter<F>,
+    column: halo2_proofs::plonk::Column<halo2_proofs::plonk::Advice>,
+    split_flag: halo2_proofs::circuit::Value<bool>,
+) -> Result<halo2_proofs::circuit::AssignedCell<pasta_curves::Fp, F>, halo2_proofs::plonk::Error>
+where
+    halo2_proofs::plonk::Assigned<F>: for<'v> From<&'v pasta_curves::Fp>,
+{
+    assign_free_advice(
+        layouter,
+        column,
+        split_flag.map(|f| if f { pasta_curves::pallas::Base::one() } else { pasta_curves::pallas::Base::zero() }),
+    )
+}

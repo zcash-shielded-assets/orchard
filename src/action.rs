@@ -5,6 +5,7 @@ use group::{Group as _, GroupEncoding as _};
 use memuse::DynamicUsage;
 use pasta_curves::pallas;
 use subtle::CtOption;
+use zcash_note_encryption::Domain;
 
 use crate::{
     note::{ExtractedNoteCommitment, Nullifier, Rho, TransmittedNoteCiphertext},
@@ -14,164 +15,88 @@ use crate::{
 
 /// An action applied to the global ledger.
 ///
-/// This both creates a note (adding a commitment to the global ledger), and consumes
-/// some note created prior to this action (adding a nullifier to the global ledger).
-///
-/// # Invariants
-///
-/// Every `Action` has a non-identity `rk`, and an `epk_bytes` that encodes a
-/// non-identity [`pasta_curves::pallas::Point`].
+/// `D` is the note encryption domain that determines ciphertext sizes.
 #[derive(Debug, Clone)]
-pub struct Action<A> {
-    /// The nullifier of the note being spent.
+pub struct Action<A, D: Domain = crate::note_encryption::OrchardDomain> {
     nf: Nullifier,
-    /// The randomized verification key for the note being spent.
     rk: redpallas::VerificationKey<SpendAuth>,
-    /// A commitment to the new note being created.
     cmx: ExtractedNoteCommitment,
-    /// The transmitted note ciphertext.
-    encrypted_note: TransmittedNoteCiphertext,
-    /// A commitment to the net value created or consumed by this action.
+    encrypted_note: TransmittedNoteCiphertext<D>,
     cv_net: ValueCommitment,
-    /// The authorization for this action.
     authorization: A,
 }
 
-impl<T> Action<T> {
+impl<A, D: Domain> Action<A, D> {
     /// Constructs an `Action` from its constituent parts.
-    ///
-    /// Returns an [`ActionFromPartsError`] if `rk` is the identity
-    /// [`pasta_curves::pallas::Point`], or if `encrypted_note.epk_bytes` does
-    /// not encode a non-identity point.
-    ///
-    /// zcashd v6.12.1 and Zebra 4.3.1 both added a consensus rule rejecting
-    /// transactions whose Orchard actions have an identity `rk`; the Zcash
-    /// protocol specification will be updated to match, and this crate aligns
-    /// with that rule. The ephemeral public key `epk` is likewise required to
-    /// be a non-identity point: it is a `KA^{Orchard}` public key (ℙ*), and the
-    /// identity is not a valid key-agreement public key.
-    ///
-    /// See:
-    /// - <https://zodl.com/zcashd-zebra-april-2026-disclosure/>
-    /// - <https://zfnd.org/zebra-4-3-1-critical-security-fixes-dockerized-mining-and-ci-hardening/>
     pub fn from_parts(
         nf: Nullifier,
         rk: redpallas::VerificationKey<SpendAuth>,
         cmx: ExtractedNoteCommitment,
-        encrypted_note: TransmittedNoteCiphertext,
+        encrypted_note: TransmittedNoteCiphertext<D>,
         cv_net: ValueCommitment,
-        authorization: T,
+        authorization: A,
     ) -> Result<Self, ActionFromPartsError> {
         if rk.is_identity() {
             return Err(ActionFromPartsError::IdentityRk);
         }
-
         Option::<()>::from(
             pallas::Point::from_bytes(&encrypted_note.epk_bytes)
                 .and_then(|p| CtOption::new((), p.is_identity().not())),
         )
         .ok_or(ActionFromPartsError::InvalidEpk)?;
-
-        Ok(Action {
-            nf,
-            rk,
-            cmx,
-            encrypted_note,
-            cv_net,
-            authorization,
-        })
+        Ok(Action { nf, rk, cmx, encrypted_note, cv_net, authorization })
     }
 
     /// Returns the nullifier of the note being spent.
-    pub fn nullifier(&self) -> &Nullifier {
-        &self.nf
-    }
-
+    pub fn nullifier(&self) -> &Nullifier { &self.nf }
     /// Returns the randomized verification key for the note being spent.
-    pub fn rk(&self) -> &redpallas::VerificationKey<SpendAuth> {
-        &self.rk
-    }
-
+    pub fn rk(&self) -> &redpallas::VerificationKey<SpendAuth> { &self.rk }
     /// Returns the commitment to the new note being created.
-    pub fn cmx(&self) -> &ExtractedNoteCommitment {
-        &self.cmx
-    }
-
+    pub fn cmx(&self) -> &ExtractedNoteCommitment { &self.cmx }
     /// Returns the encrypted note ciphertext.
-    pub fn encrypted_note(&self) -> &TransmittedNoteCiphertext {
-        &self.encrypted_note
-    }
-
-    /// Obtains the [`Rho`] value that was used to construct the new note being created.
-    pub fn rho(&self) -> Rho {
-        Rho::from_nf_old(self.nf)
-    }
-
-    /// Returns the commitment to the net value created or consumed by this action.
-    pub fn cv_net(&self) -> &ValueCommitment {
-        &self.cv_net
-    }
-
+    pub fn encrypted_note(&self) -> &TransmittedNoteCiphertext<D> { &self.encrypted_note }
+    /// Returns the rho value for the note being created.
+    pub fn rho(&self) -> Rho { Rho::from_nf_old(self.nf) }
+    /// Returns the net value commitment.
+    pub fn cv_net(&self) -> &ValueCommitment { &self.cv_net }
     /// Returns the authorization for this action.
-    pub fn authorization(&self) -> &T {
-        &self.authorization
-    }
-
+    pub fn authorization(&self) -> &A { &self.authorization }
     /// Transitions this action from one authorization state to another.
-    pub fn map<U>(self, step: impl FnOnce(T) -> U) -> Action<U> {
-        Action {
-            nf: self.nf,
-            rk: self.rk,
-            cmx: self.cmx,
-            encrypted_note: self.encrypted_note,
-            cv_net: self.cv_net,
-            authorization: step(self.authorization),
-        }
+    pub fn map<U>(self, step: impl FnOnce(A) -> U) -> Action<U, D> {
+        Action { nf: self.nf, rk: self.rk, cmx: self.cmx, encrypted_note: self.encrypted_note, cv_net: self.cv_net, authorization: step(self.authorization) }
     }
-
-    /// Transitions this action from one authorization state to another.
-    pub fn try_map<U, E>(self, step: impl FnOnce(T) -> Result<U, E>) -> Result<Action<U>, E> {
-        Ok(Action {
-            nf: self.nf,
-            rk: self.rk,
-            cmx: self.cmx,
-            encrypted_note: self.encrypted_note,
-            cv_net: self.cv_net,
-            authorization: step(self.authorization)?,
-        })
+    /// Transitions this action from one authorization state to another, fallibly.
+    pub fn try_map<U, E>(self, step: impl FnOnce(A) -> Result<U, E>) -> Result<Action<U, D>, E> {
+        Ok(Action { nf: self.nf, rk: self.rk, cmx: self.cmx, encrypted_note: self.encrypted_note, cv_net: self.cv_net, authorization: step(self.authorization)? })
     }
 }
 
-/// Errors that can occur when constructing an [`Action`] via
-/// [`Action::from_parts`].
+impl<D: Domain> DynamicUsage for Action<redpallas::Signature<SpendAuth>, D> {
+    fn dynamic_usage(&self) -> usize { 0 }
+    fn dynamic_usage_bounds(&self) -> (usize, Option<usize>) { (0, Some(0)) }
+}
+
+/// Errors that can occur when constructing an `Action` from its parts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ActionFromPartsError {
-    /// `rk` is the identity point, which is forbidden by the consensus rule
-    /// introduced in zcashd v6.12.1 and Zebra 4.3.1.
+    /// `rk` is the identity point.
     IdentityRk,
-    /// `epk_bytes` does not encode a non-identity Pallas point, so it is not a
-    /// valid `KA^{Orchard}` public key.
+    /// `epk_bytes` does not encode a non-identity Pallas point.
     InvalidEpk,
 }
 
 impl fmt::Display for ActionFromPartsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ActionFromPartsError::IdentityRk => {
-                write!(f, "an Orchard action with identity `rk` is not valid")
-            }
-            ActionFromPartsError::InvalidEpk => write!(
-                f,
-                "an Orchard action's `epk` is not a valid non-identity Pallas point"
-            ),
+            ActionFromPartsError::IdentityRk => write!(f, "an Orchard action with identity `rk` is not valid"),
+            ActionFromPartsError::InvalidEpk => write!(f, "an Orchard action's `epk` is not a valid non-identity Pallas point"),
         }
     }
 }
 
 impl core::error::Error for ActionFromPartsError {}
-
-impl DynamicUsage for Action<redpallas::Signature<SpendAuth>> {
+impl<D: Domain> DynamicUsage for Action<redpallas::Signature<SpendAuth>, D> {
     #[inline(always)]
     fn dynamic_usage(&self) -> usize {
         0
@@ -203,6 +128,7 @@ pub(crate) mod testing {
         value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
         Note, NoteVersion,
     };
+    use super::Action;
 
     use super::Action;
 

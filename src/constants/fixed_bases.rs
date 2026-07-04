@@ -40,6 +40,12 @@ pub const VALUE_COMMITMENT_V_BYTES: [u8; 1] = *b"v";
 /// SWU hash-to-curve value for the value commitment generator
 pub const VALUE_COMMITMENT_R_BYTES: [u8; 1] = *b"r";
 
+/// SWU hash-to-curve value for the zatoshi asset base generator
+pub const ZATOSHI_ASSET_BASE_V_BYTES: [u8; 1] = *b"v";
+
+/// SWU hash-to-curve personalization for the ZSA asset base generator
+pub const ZSA_ASSET_BASE_PERSONALIZATION: &str = "z.cash:OrchardZSA";
+
 /// SWU hash-to-curve personalization for the note commitment generator
 pub const NOTE_COMMITMENT_PERSONALIZATION: &str = "z.cash:Orchard-NoteCommit";
 
