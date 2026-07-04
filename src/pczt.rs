@@ -313,6 +313,22 @@ pub struct Output<D: Domain = OrchardDomain> {
     pub(crate) proprietary: BTreeMap<String, Vec<u8>>,
 }
 
+impl Spend {
+    /// Returns the asset base of the note being spent.
+    /// TODO: return actual asset from the spend note information.
+    pub fn asset(&self) -> AssetBase {
+        AssetBase::zatoshi()
+    }
+}
+
+impl<D: Domain> Output<D> {
+    /// Returns the asset base of the output note.
+    /// TODO: return actual asset from the output note information.
+    pub fn asset(&self) -> AssetBase {
+        AssetBase::zatoshi()
+    }
+}
+
 impl<D: Domain> fmt::Debug for Output<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Output")

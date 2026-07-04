@@ -721,6 +721,16 @@ impl BundleMetadata {
     pub fn output_action_index(&self, n: usize) -> Option<usize> {
         self.output_indices.get(n).copied()
     }
+
+    /// Returns the number of split spends (ZSA-only). Stub: always 0.
+    pub fn num_split_spends(&self) -> usize {
+        0
+    }
+
+    /// Returns the action index of the `n`-th split spend (ZSA-only). Stub: always None.
+    pub fn split_spend_action_index(&self, _n: usize) -> Option<usize> {
+        None
+    }
 }
 
 /// A builder that constructs a [`Bundle`] from a set of notes to be spent, and outputs

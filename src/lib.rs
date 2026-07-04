@@ -57,6 +57,14 @@ pub mod zip32;
 #[cfg(feature = "zsa")]
 pub mod zsa;
 
+// Re-export ZSA types at the crate root for ergonomic access.
+#[cfg(feature = "zsa")]
+pub use zsa::flavor;
+#[cfg(feature = "zsa")]
+pub use zsa::issuance;
+
+pub mod sighash_kind;
+
 #[cfg(test)]
 mod test_vectors;
 
