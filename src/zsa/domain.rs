@@ -25,7 +25,7 @@ use crate::{
         DiversifiedTransmissionKey, Diversifier, EphemeralPublicKey, EphemeralSecretKey,
         OutgoingViewingKey, PreparedEphemeralPublicKey, PreparedIncomingViewingKey, SharedSecret,
     },
-    note::{AssetBase, ExtractedNoteCommitment, Note, RandomSeed, Rho},
+    note::{AssetBase, ExtractedNoteCommitment, Note, NoteVersion, RandomSeed, Rho},
     shared::{
         COMPACT_NOTE_SIZE_VANILLA, COMPACT_NOTE_SIZE_ZSA, MEMO_SIZE, NOTE_DIVERSIFIER_OFFSET,
         NOTE_RSEED_OFFSET, NOTE_VALUE_OFFSET, NOTE_VERSION_BYTE_V3, NOTE_VERSION_OFFSET,
@@ -90,7 +90,7 @@ where
     let pk_d = get_validated_pk_d(&diversifier)?;
     let recipient = Address::from_parts(diversifier, pk_d);
 
-    let note = Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, rseed).into_option()?;
+    let note = Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, rseed, NoteVersion::V3).into_option()?;
 
     Some((note, recipient))
 }

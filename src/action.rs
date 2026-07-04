@@ -71,11 +71,6 @@ impl<A, D: Domain> Action<A, D> {
     }
 }
 
-impl<D: Domain> DynamicUsage for Action<redpallas::Signature<SpendAuth>, D> {
-    fn dynamic_usage(&self) -> usize { 0 }
-    fn dynamic_usage_bounds(&self) -> (usize, Option<usize>) { (0, Some(0)) }
-}
-
 /// Errors that can occur when constructing an `Action` from its parts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]

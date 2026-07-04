@@ -24,7 +24,7 @@ use crate::{
     bundle::commitments::{hash_bundle_auth_data, hash_bundle_txid_data},
     keys::{IncomingViewingKey, OutgoingViewingKey, PreparedIncomingViewingKey},
     note::{Note, NoteVersion},
-    note_encryption::BundleDomain,
+    note_encryption::{BundleDomain, OrchardDomain},
     primitives::redpallas::{self, Binding, SpendAuth},
     tree::Anchor,
     value::{ValueCommitTrapdoor, ValueCommitment, ValueSum},
@@ -892,7 +892,7 @@ pub enum CommitmentError {
     InvalidTransactionVersion,
 }
 
-<<<<<<< HEAD
+
 impl fmt::Display for CommitmentError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

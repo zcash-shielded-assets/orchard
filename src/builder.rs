@@ -8,7 +8,7 @@ use core::iter;
 use ff::Field;
 use pasta_curves::pallas;
 use rand::{prelude::SliceRandom, CryptoRng, RngCore};
-use zcash_note_encryption::ENC_CIPHERTEXT_SIZE;
+use zcash_note_encryption::{note_bytes::NoteBytesData, ENC_CIPHERTEXT_SIZE};
 
 use crate::{
     address::Address,
@@ -484,7 +484,7 @@ impl OutputInfo {
             );
             let mut enc_ciphertext = [0u8; ENC_CIPHERTEXT_SIZE];
             rng.fill_bytes(&mut enc_ciphertext);
-            enc_ciphertext
+            NoteBytesData(enc_ciphertext)
         } else {
             encryptor.encrypt_note_plaintext()
         };

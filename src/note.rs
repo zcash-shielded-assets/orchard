@@ -335,7 +335,7 @@ impl Note {
     ) -> Self {
         let rho = Rho::from_bytes(&pallas::Base::zero().to_repr()).unwrap();
         let rseed = RandomSeed::random(&mut rng, &rho);
-        Note::from_parts(recipient, value, asset, rho, rseed).unwrap()
+        Note::from_parts(recipient, value, asset, rho, rseed, NoteVersion::V3).unwrap()
     }
 
     /// Updates the rho and rseed for issuance note derivation.
