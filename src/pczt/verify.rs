@@ -2,7 +2,7 @@ use core::fmt;
 
 use crate::{
     keys::{FullViewingKey, SpendValidatingKey},
-    note::{ExtractedNoteCommitment, Rho},
+    note::{AssetBase, ExtractedNoteCommitment, Rho},
     value::ValueCommitment,
     Note,
 };
@@ -71,6 +71,7 @@ impl super::Spend {
         let note = Note::from_parts(
             self.recipient.ok_or(VerifyError::MissingRecipient)?,
             self.value.ok_or(VerifyError::MissingValue)?,
+            AssetBase::zatoshi(),
             self.rho.ok_or(VerifyError::MissingRho)?,
             self.rseed.ok_or(VerifyError::MissingRandomSeed)?,
         )
@@ -129,6 +130,7 @@ impl super::Output {
         let note = Note::from_parts(
             self.recipient.ok_or(VerifyError::MissingRecipient)?,
             self.value.ok_or(VerifyError::MissingValue)?,
+            AssetBase::zatoshi(),
             Rho::from_nf_old(spend.nullifier),
             self.rseed.ok_or(VerifyError::MissingRandomSeed)?,
         )

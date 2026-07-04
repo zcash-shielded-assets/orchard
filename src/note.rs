@@ -1,4 +1,7 @@
 //! Data structures used for note construction.
+pub(crate) mod asset_base;
+pub use self::asset_base::AssetBase;
+
 use core::fmt;
 use memuse::DynamicUsage;
 
@@ -143,12 +146,9 @@ pub struct Note {
     recipient: Address,
     /// The value of this note.
     value: NoteValue,
+    /// The asset of this note.
+    asset: AssetBase,
     /// A unique creation ID for this note.
-    ///
-    /// This is produced from the nullifier of the note that will be spent in the [`Action`] that
-    /// creates this note.
-    ///
-    /// [`Action`]: crate::action::Action
     rho: Rho,
     /// The seed randomness for various note components.
     rseed: RandomSeed,
@@ -182,15 +182,11 @@ impl Note {
     pub fn from_parts(
         recipient: Address,
         value: NoteValue,
+        asset: AssetBase,
         rho: Rho,
         rseed: RandomSeed,
     ) -> CtOption<Self> {
-        let note = Note {
-            recipient,
-            value,
-            rho,
-            rseed,
-        };
+        let note = Note { recipient, value, asset, rho, rseed };
         CtOption::new(note, note.commitment_inner().is_some())
     }
 
@@ -207,7 +203,7 @@ impl Note {
         mut rng: impl RngCore,
     ) -> Self {
         loop {
-            let note = Note::from_parts(recipient, value, rho, RandomSeed::random(&mut rng, &rho));
+            let note = Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, RandomSeed::random(&mut rng, &rho));
             if note.is_some().into() {
                 break note.unwrap();
             }
