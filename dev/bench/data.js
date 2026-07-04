@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783129283182,
+  "lastUpdate": 1783129646546,
   "repoUrl": "https://github.com/zcash-shielded-assets/orchard",
   "entries": {
     "Orchard Benchmarks": [
@@ -719,6 +719,186 @@ window.BENCHMARK_DATA = {
             "name": "default_address",
             "value": 522485,
             "range": "± 6974",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "hanh425@gmail.com",
+            "name": "Hanh Huynh Huu",
+            "username": "hhanh00"
+          },
+          "committer": {
+            "email": "hanh425@gmail.com",
+            "name": "Hanh Huynh Huu",
+            "username": "hhanh00"
+          },
+          "distinct": true,
+          "id": "623ae5ef83647b530f47d1add8267d5e4803014f",
+          "message": "Add AssetBase to Note\n\n- Add note/asset_base.rs with AssetBase type (pallas::Point wrapper)\n- Add ZATOSHI_ASSET_BASE_V_BYTES, ZSA_ASSET_BASE_PERSONALIZATION constants\n- Note::from_parts now takes 5 args (asset added after value)\n- All callers updated to use AssetBase::zatoshi() for vanilla notes",
+          "timestamp": "2026-07-04T09:34:57+08:00",
+          "tree_id": "1a4e0b75d2293c90aada60ee1c1a4f3a7026bb85",
+          "url": "https://github.com/zcash-shielded-assets/orchard/commit/623ae5ef83647b530f47d1add8267d5e4803014f"
+        },
+        "date": 1783129644936,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "proving/bundle/1",
+            "value": 2760381885,
+            "range": "± 20340703",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/2",
+            "value": 2732309184,
+            "range": "± 19919072",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/3",
+            "value": 3895462764,
+            "range": "± 32437594",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/4",
+            "value": 5120400710,
+            "range": "± 11224745",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/1",
+            "value": 22166282,
+            "range": "± 169646",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/2",
+            "value": 22053266,
+            "range": "± 148278",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/3",
+            "value": 25592565,
+            "range": "± 209193",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/4",
+            "value": 28981736,
+            "range": "± 201413",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/valid",
+            "value": 1609351,
+            "range": "± 11044",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/invalid",
+            "value": 134097,
+            "range": "± 236",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/compact-valid",
+            "value": 1605691,
+            "range": "± 5511",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "compact-note-decryption/invalid",
+            "value": 1414926989,
+            "range": "± 2562558",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/10",
+            "value": 16977195,
+            "range": "± 41690",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/10",
+            "value": 2282550,
+            "range": "± 16958",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/10",
+            "value": 16958167,
+            "range": "± 38170",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/10",
+            "value": 2240261,
+            "range": "± 27572",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/50",
+            "value": 84834302,
+            "range": "± 100623",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/50",
+            "value": 11357819,
+            "range": "± 20325",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/50",
+            "value": 84788653,
+            "range": "± 723742",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/50",
+            "value": 11146251,
+            "range": "± 19940",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/100",
+            "value": 169758520,
+            "range": "± 509217",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/100",
+            "value": 22697897,
+            "range": "± 265619",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/100",
+            "value": 169500825,
+            "range": "± 159256",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/100",
+            "value": 22279982,
+            "range": "± 278886",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "derive_fvk",
+            "value": 488974,
+            "range": "± 4946",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "default_address",
+            "value": 522107,
+            "range": "± 767",
             "unit": "ns/iter"
           }
         ]
