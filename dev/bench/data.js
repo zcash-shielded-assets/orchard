@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783134840864,
+  "lastUpdate": 1783135209298,
   "repoUrl": "https://github.com/zcash-shielded-assets/orchard",
   "entries": {
     "Orchard Benchmarks": [
@@ -2159,6 +2159,186 @@ window.BENCHMARK_DATA = {
             "name": "default_address",
             "value": 489861,
             "range": "± 2591",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "hanh425@gmail.com",
+            "name": "Hanh Huynh Huu",
+            "username": "hhanh00"
+          },
+          "committer": {
+            "email": "hanh425@gmail.com",
+            "name": "Hanh Huynh Huu",
+            "username": "hhanh00"
+          },
+          "distinct": true,
+          "id": "f98a0e7138aceba7db2e727b41add179b87e07e4",
+          "message": "Generic NoteCommitConfig, ZsaConfig uses PallasLookupRangeCheck4_5BConfig\n\n- NoteCommitConfig<Lookup> generic to support ZSA halo2 types\n- ZsaConfig stores chip configs with PallasLookupRangeCheck4_5BConfig\n- Explicit Lookup on EccChip::construct and NoteCommitChip::configure calls\n- Default and --features zsa clean\n- zsa-circuit: 8 remaining gadget function signature mismatches",
+          "timestamp": "2026-07-04T11:07:52+08:00",
+          "tree_id": "8bd3b480e98a5ca3859c52d1684249db8fc5e359",
+          "url": "https://github.com/zcash-shielded-assets/orchard/commit/f98a0e7138aceba7db2e727b41add179b87e07e4"
+        },
+        "date": 1783135207824,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "proving/bundle/1",
+            "value": 2595074526,
+            "range": "± 21649660",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/2",
+            "value": 2587400026,
+            "range": "± 9228902",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/3",
+            "value": 3737982816,
+            "range": "± 51061799",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/4",
+            "value": 4835528707,
+            "range": "± 26774039",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/1",
+            "value": 20655348,
+            "range": "± 194366",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/2",
+            "value": 20666649,
+            "range": "± 175966",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/3",
+            "value": 23973753,
+            "range": "± 162066",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/4",
+            "value": 27019384,
+            "range": "± 294628",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/valid",
+            "value": 1512952,
+            "range": "± 11583",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/invalid",
+            "value": 124854,
+            "range": "± 269",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/compact-valid",
+            "value": 1508511,
+            "range": "± 37703",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "compact-note-decryption/invalid",
+            "value": 1328249833,
+            "range": "± 3753002",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/10",
+            "value": 15942302,
+            "range": "± 37173",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/10",
+            "value": 2115383,
+            "range": "± 4077",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/10",
+            "value": 15896045,
+            "range": "± 44571",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/10",
+            "value": 2080602,
+            "range": "± 2772",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/50",
+            "value": 79709908,
+            "range": "± 134373",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/50",
+            "value": 10523959,
+            "range": "± 13507",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/50",
+            "value": 79495837,
+            "range": "± 199780",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/50",
+            "value": 10353353,
+            "range": "± 204879",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/100",
+            "value": 159424582,
+            "range": "± 307351",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/100",
+            "value": 21060215,
+            "range": "± 42397",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/100",
+            "value": 158991909,
+            "range": "± 196240",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/100",
+            "value": 20688784,
+            "range": "± 30860",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "derive_fvk",
+            "value": 453030,
+            "range": "± 7988",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "default_address",
+            "value": 490241,
+            "range": "± 2162",
             "unit": "ns/iter"
           }
         ]
