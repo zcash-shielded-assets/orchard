@@ -32,6 +32,7 @@ pub(crate) mod gadgets {
     ///
     /// [Section 4.16: Note Commitments and Nullifiers]: https://zips.z.cash/protocol/protocol.pdf#commitmentsandnullifiers
     #[allow(clippy::too_many_arguments)]
+    /// Derives a nullifier in-circuit.
     pub(crate) fn derive_nullifier<
         PoseidonChip: PoseidonSpongeInstructions<pallas::Base, poseidon::P128Pow5T3, ConstantLength<2>, 3, 2>,
         AddChip: AddInstruction<pallas::Base>,

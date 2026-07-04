@@ -94,14 +94,19 @@ pub(crate) const ENABLE_ZSA: usize = 9;
 
 /// The `OrchardCircuit` trait defines an interface for vanilla and ZSA circuit flavors.
 #[cfg(feature = "zsa-circuit")]
+/// Trait for Orchard protocol flavors (vanilla and ZSA) that implements circuit behavior.
 pub trait OrchardCircuit: Sized + Default {
+    /// The circuit configuration type.
     type Config: Clone;
+    /// Configures the circuit.
     fn configure(meta: &mut plonk::ConstraintSystem<pallas::Base>) -> Self::Config;
+    /// Synthesizes the circuit from witnesses.
     fn synthesize(
         circuit: &Witnesses,
         config: Self::Config,
         layouter: impl Layouter<pallas::Base>,
     ) -> Result<(), plonk::Error>;
+    /// Builds ZSA-specific additional witnesses.
     fn build_additional_zsa_witnesses(
         psi_nf: pallas::Base,
         asset: AssetBase,
