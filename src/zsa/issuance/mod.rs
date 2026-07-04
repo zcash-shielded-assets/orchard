@@ -1885,8 +1885,8 @@ mod tests {
     fn verify_rho_computation_for_issuance_notes() {
         use crate::{
             builder::{Builder, BundleType},
+            bundle::BundleVersion,
             circuit::ProvingKey,
-            zsa::flavor::OrchardZSA,
             keys::SpendAuthorizingKey,
             note::ExtractedNoteCommitment,
             tree::{MerkleHashOrchard, MerklePath},
@@ -1941,18 +1941,20 @@ mod tests {
         };
 
         // Create a transfer bundle
-        let mut builder = Builder::new(BundleType::DEFAULT_ZSA, anchor);
+        let bundle_version = BundleVersion::orchard_v3();
+        let flags = bundle_version.default_flags();
+        let mut builder = Builder::new(BundleType::DEFAULT_ZSA, bundle_version, anchor, flags).unwrap();
         builder.add_spend(fvk, note1, merkle_path).unwrap();
         builder
-            .add_output(None, recipient, NoteValue::from_raw(5), asset1, [0u8; 512])
+            .add_output(None, recipient, NoteValue::from_raw(5), [0u8; 512])
             .unwrap();
         builder
-            .add_output(None, recipient, NoteValue::from_raw(5), asset1, [0u8; 512])
+            .add_output(None, recipient, NoteValue::from_raw(5), [0u8; 512])
             .unwrap();
-        let unauthorized = builder.build(&mut rng).unwrap().unwrap().0;
-        let sighash = unauthorized.commitment().into();
+        let unauthorized = builder.build::<i64>(&mut rng).unwrap().unwrap().0;
+        let sighash: [u8; 32] = unauthorized.commitment(TxVersion::V5).unwrap().into();
         let proven = unauthorized.create_proof(&pk, &mut rng).unwrap();
-        let authorized: Bundle<_, i64, OrchardZSA> = proven
+        let authorized = proven
             .apply_signatures(rng, sighash, &[SpendAuthorizingKey::from(&sk)])
             .unwrap();
 

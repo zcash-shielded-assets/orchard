@@ -702,7 +702,7 @@ mod tests {
 
             let recipient = Address::from_parts(d, pk_d);
             let note_version = NoteVersion::V2;
-            let note = Note::from_parts(recipient, value, rho, rseed, note_version).unwrap();
+            let note = Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, rseed, note_version).unwrap();
             assert_eq!(ExtractedNoteCommitment::from(note.commitment()), cmx);
 
             let action = Action::from_parts(

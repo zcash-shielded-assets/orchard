@@ -125,8 +125,6 @@ pub(crate) mod testing {
     };
     use super::Action;
 
-    use super::Action;
-
     /// Builds a real, decryptable `TransmittedNoteCiphertext` for `note`,
     /// mirroring `OutputInfo::build`: the same encryptor yields a non-identity
     /// ephemeral public key (satisfying the `Action::from_parts` epk invariant)
@@ -138,7 +136,7 @@ pub(crate) mod testing {
         cv_net: &ValueCommitment,
         cmx: &ExtractedNoteCommitment,
         mut rng: impl RngCore,
-    ) -> TransmittedNoteCiphertext {
+    ) -> TransmittedNoteCiphertext<OrchardDomain> {
         let encryptor = OrchardNoteEncryption::new(None, note, [0u8; 512]);
         TransmittedNoteCiphertext {
             epk_bytes: OrchardDomain::epk_bytes(encryptor.epk()).0,
@@ -215,9 +213,11 @@ mod tests {
     use super::{Action, ActionFromPartsError};
     use crate::{
         note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
+        note_encryption::OrchardDomain,
         primitives::redpallas::{self, SpendAuth},
         value::{ValueCommitTrapdoor, ValueCommitment, ValueSum},
     };
+    use zcash_note_encryption::note_bytes::NoteBytesData;
 
     /// The canonical Pallas encoding of the identity is [0u8; 32]; plain
     /// redpallas accepts it as a `VerificationKey<SpendAuth>`.
@@ -248,14 +248,14 @@ mod tests {
     fn dummy_other_fields() -> (
         Nullifier,
         ExtractedNoteCommitment,
-        TransmittedNoteCiphertext,
+        TransmittedNoteCiphertext<OrchardDomain>,
         ValueCommitment,
     ) {
         let nf = Nullifier::from_bytes(&[1u8; 32]).unwrap();
         let cmx = ExtractedNoteCommitment::from_bytes(&[2u8; 32]).unwrap();
-        let encrypted_note = TransmittedNoteCiphertext {
+        let encrypted_note = TransmittedNoteCiphertext::<OrchardDomain> {
             epk_bytes: pallas::Point::generator().to_bytes(),
-            enc_ciphertext: [4u8; 580],
+            enc_ciphertext: NoteBytesData([4u8; 580]),
             out_ciphertext: [5u8; 80],
         };
         let cv_net = ValueCommitment::derive(ValueSum::from_raw(42), ValueCommitTrapdoor::zero());
