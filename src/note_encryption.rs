@@ -1,4 +1,7 @@
 //! In-band secret distribution for Orchard bundles.
+//!
+//! Implements `Domain` for `OrchardDomain` (52-byte compact notes, vanilla / Ironwood).
+//! ZSA note encryption lives in the `zsa` module.
 
 use alloc::vec::Vec;
 use core::fmt;
@@ -6,9 +9,8 @@ use core::fmt;
 use blake2b_simd::{Hash, Params};
 use group::ff::PrimeField;
 use zcash_note_encryption::{
-    BatchDomain, Domain, EphemeralKeyBytes, NotePlaintextBytes, OutPlaintextBytes,
-    OutgoingCipherKey, ShieldedOutput, COMPACT_NOTE_SIZE, ENC_CIPHERTEXT_SIZE, NOTE_PLAINTEXT_SIZE,
-    OUT_PLAINTEXT_SIZE,
+    note_bytes::NoteBytesData, note_bytes::NoteBytes, BatchDomain, Domain, EphemeralKeyBytes,
+    OutPlaintextBytes, OutgoingCipherKey, ShieldedOutput, OUT_PLAINTEXT_SIZE,
 };
 
 use crate::{
@@ -18,9 +20,27 @@ use crate::{
         OutgoingViewingKey, PreparedEphemeralPublicKey, PreparedIncomingViewingKey, SharedSecret,
     },
     note::{ExtractedNoteCommitment, Nullifier, RandomSeed, Rho},
+    shared::{
+        COMPACT_NOTE_SIZE_VANILLA, MEMO_SIZE, NOTE_DIVERSIFIER_OFFSET, NOTE_RSEED_OFFSET,
+        NOTE_VALUE_OFFSET, NOTE_VERSION_BYTE_V2, NOTE_VERSION_OFFSET,
+    },
     value::{NoteValue, ValueCommitment},
     Address, Note,
 };
+
+// ---------------------------------------------------------------------------
+// Vanilla note sizes
+// ---------------------------------------------------------------------------
+
+/// Vanilla note plaintext size.
+const NOTE_PLAINTEXT_SIZE: usize = COMPACT_NOTE_SIZE_VANILLA + MEMO_SIZE; // 564
+
+/// Vanilla encrypted note ciphertext size.
+const ENC_CIPHERTEXT_SIZE: usize = NOTE_PLAINTEXT_SIZE + 16; // 580
+
+// ---------------------------------------------------------------------------
+// PRF-OCK
+// ---------------------------------------------------------------------------
 
 const PRF_OCK_ORCHARD_PERSONALIZATION: &[u8; 16] = b"Zcash_Orchardock";
 
@@ -49,6 +69,10 @@ pub(crate) fn prf_ock_orchard(
     )
 }
 
+// ---------------------------------------------------------------------------
+// Note plaintext parsing
+// ---------------------------------------------------------------------------
+
 fn orchard_parse_note_plaintext_without_memo<F>(
     domain: &OrchardDomain,
     plaintext: &[u8],
@@ -57,32 +81,45 @@ fn orchard_parse_note_plaintext_without_memo<F>(
 where
     F: FnOnce(&Diversifier) -> DiversifiedTransmissionKey,
 {
-    assert!(plaintext.len() >= COMPACT_NOTE_SIZE);
-
-    // Check note plaintext version
-    if plaintext[0] != 0x02 {
+    if plaintext.first() != Some(&NOTE_VERSION_BYTE_V2) {
         return None;
     }
 
-    // The unwraps below are guaranteed to succeed by the assertion above
-    let diversifier = Diversifier::from_bytes(plaintext[1..12].try_into().unwrap());
-    let value = NoteValue::from_bytes(plaintext[12..20].try_into().unwrap());
+    let diversifier = Diversifier::from_bytes(
+        plaintext[NOTE_DIVERSIFIER_OFFSET..NOTE_VALUE_OFFSET]
+            .try_into()
+            .unwrap(),
+    );
+
+    let value = NoteValue::from_bytes(
+        plaintext[NOTE_VALUE_OFFSET..NOTE_RSEED_OFFSET]
+            .try_into()
+            .unwrap(),
+    );
+
     let rseed = Option::from(RandomSeed::from_bytes(
-        plaintext[20..COMPACT_NOTE_SIZE].try_into().unwrap(),
+        plaintext[NOTE_RSEED_OFFSET..COMPACT_NOTE_SIZE_VANILLA]
+            .try_into()
+            .unwrap(),
         &domain.rho,
     ))?;
 
     let pk_d = get_pk_d(&diversifier);
-
     let recipient = Address::from_parts(diversifier, pk_d);
-    let note = Option::from(Note::from_parts(recipient, value, domain.rho, rseed))?;
+    let note = Note::from_parts(recipient, value, domain.rho, rseed).into_option()?;
+
     Some((note, recipient))
 }
 
-/// Orchard-specific note encryption logic.
-#[derive(Debug)]
+// ---------------------------------------------------------------------------
+// OrchardDomain
+// ---------------------------------------------------------------------------
+
+/// Orchard-specific note encryption logic for 52-byte compact notes (vanilla / Ironwood).
+#[derive(Debug, Clone)]
 pub struct OrchardDomain {
-    rho: Rho,
+    /// A parameter needed to generate the nullifier.
+    pub rho: Rho,
 }
 
 impl memuse::DynamicUsage for OrchardDomain {
@@ -108,9 +145,15 @@ impl OrchardDomain {
         }
     }
 
-    /// Constructs a domain that can be used to trial-decrypt this action's output note.
+    /// Constructs a domain that can be used to trial-decrypt this compact action's output note.
     pub fn for_compact_action(act: &CompactAction) -> Self {
         Self { rho: act.rho() }
+    }
+
+    /// Constructs a domain from a rho.
+    #[cfg(test)]
+    pub(crate) fn for_rho(rho: Rho) -> Self {
+        Self { rho }
     }
 }
 
@@ -128,7 +171,12 @@ impl Domain for OrchardDomain {
     type ValueCommitment = ValueCommitment;
     type ExtractedCommitment = ExtractedNoteCommitment;
     type ExtractedCommitmentBytes = [u8; 32];
-    type Memo = [u8; 512]; // TODO use a more interesting type
+    type Memo = [u8; MEMO_SIZE];
+
+    type NotePlaintextBytes = NoteBytesData<NOTE_PLAINTEXT_SIZE>;
+    type NoteCiphertextBytes = NoteBytesData<ENC_CIPHERTEXT_SIZE>;
+    type CompactNotePlaintextBytes = NoteBytesData<COMPACT_NOTE_SIZE_VANILLA>;
+    type CompactNoteCiphertextBytes = NoteBytesData<COMPACT_NOTE_SIZE_VANILLA>;
 
     fn derive_esk(note: &Self::Note) -> Option<Self::EphemeralSecretKey> {
         Some(note.esk())
@@ -163,18 +211,27 @@ impl Domain for OrchardDomain {
         epk.agree(ivk)
     }
 
-    fn kdf(secret: Self::SharedSecret, ephemeral_key: &EphemeralKeyBytes) -> Self::SymmetricKey {
+    fn kdf(
+        secret: Self::SharedSecret,
+        ephemeral_key: &EphemeralKeyBytes,
+    ) -> Self::SymmetricKey {
         secret.kdf_orchard(ephemeral_key)
     }
 
-    fn note_plaintext_bytes(note: &Self::Note, memo: &Self::Memo) -> NotePlaintextBytes {
+    fn note_plaintext_bytes(
+        note: &Self::Note,
+        memo: &Self::Memo,
+    ) -> Self::NotePlaintextBytes {
         let mut np = [0; NOTE_PLAINTEXT_SIZE];
-        np[0] = 0x02;
-        np[1..12].copy_from_slice(note.recipient().diversifier().as_array());
-        np[12..20].copy_from_slice(&note.value().to_bytes());
-        np[20..52].copy_from_slice(note.rseed().as_bytes());
-        np[52..].copy_from_slice(memo);
-        NotePlaintextBytes(np)
+        np[NOTE_VERSION_OFFSET] = NOTE_VERSION_BYTE_V2;
+        np[NOTE_DIVERSIFIER_OFFSET..NOTE_VALUE_OFFSET]
+            .copy_from_slice(note.recipient().diversifier().as_array());
+        np[NOTE_VALUE_OFFSET..NOTE_RSEED_OFFSET]
+            .copy_from_slice(&note.value().to_bytes());
+        np[NOTE_RSEED_OFFSET..COMPACT_NOTE_SIZE_VANILLA]
+            .copy_from_slice(note.rseed().as_bytes());
+        np[COMPACT_NOTE_SIZE_VANILLA..].copy_from_slice(memo);
+        NoteBytesData(np)
     }
 
     fn derive_ock(
@@ -211,9 +268,9 @@ impl Domain for OrchardDomain {
     fn parse_note_plaintext_without_memo_ivk(
         &self,
         ivk: &Self::IncomingViewingKey,
-        plaintext: &[u8],
+        plaintext: &Self::CompactNotePlaintextBytes,
     ) -> Option<(Self::Note, Self::Recipient)> {
-        orchard_parse_note_plaintext_without_memo(self, plaintext, |diversifier| {
+        orchard_parse_note_plaintext_without_memo(self, plaintext.as_ref(), |diversifier| {
             DiversifiedTransmissionKey::derive(ivk, diversifier)
         })
     }
@@ -221,22 +278,31 @@ impl Domain for OrchardDomain {
     fn parse_note_plaintext_without_memo_ovk(
         &self,
         pk_d: &Self::DiversifiedTransmissionKey,
-        plaintext: &NotePlaintextBytes,
+        plaintext: &Self::CompactNotePlaintextBytes,
     ) -> Option<(Self::Note, Self::Recipient)> {
-        orchard_parse_note_plaintext_without_memo(self, &plaintext.0, |_| *pk_d)
+        orchard_parse_note_plaintext_without_memo(self, plaintext.as_ref(), |_| *pk_d)
     }
 
-    fn extract_memo(&self, plaintext: &NotePlaintextBytes) -> Self::Memo {
-        plaintext.0[COMPACT_NOTE_SIZE..NOTE_PLAINTEXT_SIZE]
-            .try_into()
-            .unwrap()
+    fn split_plaintext_at_memo(
+        &self,
+        plaintext: &Self::NotePlaintextBytes,
+    ) -> Option<(Self::CompactNotePlaintextBytes, Self::Memo)> {
+        let (compact, memo) = plaintext.as_ref().split_at(COMPACT_NOTE_SIZE_VANILLA);
+        Some((
+            Self::CompactNotePlaintextBytes::from_slice(compact)?,
+            memo.try_into().ok()?,
+        ))
     }
 
-    fn extract_pk_d(out_plaintext: &OutPlaintextBytes) -> Option<Self::DiversifiedTransmissionKey> {
+    fn extract_pk_d(
+        out_plaintext: &OutPlaintextBytes,
+    ) -> Option<Self::DiversifiedTransmissionKey> {
         DiversifiedTransmissionKey::from_bytes(out_plaintext.0[0..32].try_into().unwrap()).into()
     }
 
-    fn extract_esk(out_plaintext: &OutPlaintextBytes) -> Option<Self::EphemeralSecretKey> {
+    fn extract_esk(
+        out_plaintext: &OutPlaintextBytes,
+    ) -> Option<Self::EphemeralSecretKey> {
         EphemeralSecretKey::from_bytes(out_plaintext.0[32..OUT_PLAINTEXT_SIZE].try_into().unwrap())
             .into()
     }
@@ -260,46 +326,70 @@ impl BatchDomain for OrchardDomain {
 /// Implementation of in-band secret distribution for Orchard bundles.
 pub type OrchardNoteEncryption = zcash_note_encryption::NoteEncryption<OrchardDomain>;
 
-impl<T> ShieldedOutput<OrchardDomain, ENC_CIPHERTEXT_SIZE> for Action<T> {
+// ---------------------------------------------------------------------------
+// ShieldedOutput impls
+// ---------------------------------------------------------------------------
+
+impl<T> ShieldedOutput<OrchardDomain> for Action<T> {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
         EphemeralKeyBytes(self.encrypted_note().epk_bytes)
     }
 
-    fn cmstar_bytes(&self) -> [u8; 32] {
+    fn cmstar_bytes(&self) -> <OrchardDomain as Domain>::ExtractedCommitmentBytes {
         self.cmx().to_bytes()
     }
 
-    fn enc_ciphertext(&self) -> &[u8; ENC_CIPHERTEXT_SIZE] {
-        &self.encrypted_note().enc_ciphertext
+    fn enc_ciphertext(&self) -> Option<&<OrchardDomain as Domain>::NoteCiphertextBytes> {
+        Some(&self.encrypted_note().enc_ciphertext)
+    }
+
+    fn enc_ciphertext_compact(&self) -> <OrchardDomain as Domain>::CompactNoteCiphertextBytes {
+        let enc = self.encrypted_note().enc_ciphertext.as_ref();
+        let mut compact = [0u8; COMPACT_NOTE_SIZE_VANILLA];
+        let end = enc.len().min(COMPACT_NOTE_SIZE_VANILLA);
+        compact[..end].copy_from_slice(&enc[..end]);
+        NoteBytesData(compact)
     }
 }
 
-impl ShieldedOutput<OrchardDomain, ENC_CIPHERTEXT_SIZE> for crate::pczt::Action {
+impl ShieldedOutput<OrchardDomain> for crate::pczt::Action {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
-        EphemeralKeyBytes(self.output().encrypted_note().epk_bytes)
+        EphemeralKeyBytes(self.output.encrypted_note.epk_bytes)
     }
 
-    fn cmstar_bytes(&self) -> [u8; 32] {
-        self.output().cmx().to_bytes()
+    fn cmstar_bytes(&self) -> <OrchardDomain as Domain>::ExtractedCommitmentBytes {
+        self.output.cmx.to_bytes()
     }
 
-    fn enc_ciphertext(&self) -> &[u8; ENC_CIPHERTEXT_SIZE] {
-        &self.output().encrypted_note().enc_ciphertext
+    fn enc_ciphertext(&self) -> Option<&<OrchardDomain as Domain>::NoteCiphertextBytes> {
+        Some(&self.output.encrypted_note.enc_ciphertext)
+    }
+
+    fn enc_ciphertext_compact(&self) -> <OrchardDomain as Domain>::CompactNoteCiphertextBytes {
+        let mut compact = [0u8; COMPACT_NOTE_SIZE_VANILLA];
+        let enc = self.output.encrypted_note.enc_ciphertext.as_ref();
+        let end = enc.len().min(COMPACT_NOTE_SIZE_VANILLA);
+        compact[..end].copy_from_slice(&enc[..end]);
+        NoteBytesData(compact)
     }
 }
 
-/// A compact Action for light clients.
+// ---------------------------------------------------------------------------
+// CompactAction
+// ---------------------------------------------------------------------------
+
+/// A compact Action for light clients, always 52-byte encrypted note.
 #[derive(Clone)]
 pub struct CompactAction {
     nullifier: Nullifier,
     cmx: ExtractedNoteCommitment,
     ephemeral_key: EphemeralKeyBytes,
-    enc_ciphertext: [u8; 52],
+    enc_ciphertext: NoteBytesData<COMPACT_NOTE_SIZE_VANILLA>,
 }
 
 impl fmt::Debug for CompactAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "CompactAction")
+        f.debug_tuple("CompactAction").finish()
     }
 }
 
@@ -308,25 +398,30 @@ impl<T> From<&Action<T>> for CompactAction {
         CompactAction {
             nullifier: *action.nullifier(),
             cmx: *action.cmx(),
-            ephemeral_key: action.ephemeral_key(),
-            enc_ciphertext: action.encrypted_note().enc_ciphertext[..52]
-                .try_into()
-                .unwrap(),
+            ephemeral_key: EphemeralKeyBytes(action.encrypted_note().epk_bytes),
+            enc_ciphertext: NoteBytesData::from_slice(
+                &action.encrypted_note().enc_ciphertext.as_ref()[..COMPACT_NOTE_SIZE_VANILLA],
+            )
+            .unwrap(),
         }
     }
 }
 
-impl ShieldedOutput<OrchardDomain, COMPACT_NOTE_SIZE> for CompactAction {
+impl ShieldedOutput<OrchardDomain> for CompactAction {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
         EphemeralKeyBytes(self.ephemeral_key.0)
     }
 
-    fn cmstar_bytes(&self) -> [u8; 32] {
+    fn cmstar_bytes(&self) -> <OrchardDomain as Domain>::ExtractedCommitmentBytes {
         self.cmx.to_bytes()
     }
 
-    fn enc_ciphertext(&self) -> &[u8; COMPACT_NOTE_SIZE] {
-        &self.enc_ciphertext
+    fn enc_ciphertext(&self) -> Option<&<OrchardDomain as Domain>::NoteCiphertextBytes> {
+        None
+    }
+
+    fn enc_ciphertext_compact(&self) -> <OrchardDomain as Domain>::CompactNoteCiphertextBytes {
+        self.enc_ciphertext
     }
 }
 
@@ -336,7 +431,7 @@ impl CompactAction {
         nullifier: Nullifier,
         cmx: ExtractedNoteCommitment,
         ephemeral_key: EphemeralKeyBytes,
-        enc_ciphertext: [u8; 52],
+        enc_ciphertext: NoteBytesData<COMPACT_NOTE_SIZE_VANILLA>,
     ) -> Self {
         Self {
             nullifier,
@@ -366,11 +461,12 @@ impl CompactAction {
 #[cfg(feature = "test-dependencies")]
 pub mod testing {
     use rand::RngCore;
-    use zcash_note_encryption::Domain;
+    use zcash_note_encryption::{note_bytes::NoteBytes, Domain, NoteEncryption};
 
     use crate::{
         keys::OutgoingViewingKey,
         note::{ExtractedNoteCommitment, Nullifier, RandomSeed, Rho},
+        shared::{COMPACT_NOTE_SIZE_VANILLA, MEMO_SIZE, NOTE_VERSION_OFFSET},
         value::NoteValue,
         Address, Note,
     };
@@ -399,151 +495,20 @@ pub mod testing {
             }
         };
         let note = Note::from_parts(recipient, value, rho, rseed).unwrap();
-        let encryptor = OrchardNoteEncryption::new(ovk, note, [0u8; 512]);
+        let encryptor = OrchardNoteEncryption::new(ovk, note, [0u8; MEMO_SIZE]);
         let cmx = ExtractedNoteCommitment::from(note.commitment());
         let ephemeral_key = OrchardDomain::epk_bytes(encryptor.epk());
         let enc_ciphertext = encryptor.encrypt_note_plaintext();
 
         (
-            CompactAction {
-                nullifier: nf_old,
+            CompactAction::from_parts(
+                nf_old,
                 cmx,
                 ephemeral_key,
-                enc_ciphertext: enc_ciphertext.as_ref()[..52].try_into().unwrap(),
-            },
+                NoteBytesData::from_slice(&enc_ciphertext.as_ref()[..COMPACT_NOTE_SIZE_VANILLA])
+                    .unwrap(),
+            ),
             note,
         )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use rand::rngs::OsRng;
-    use zcash_note_encryption::{
-        try_compact_note_decryption, try_note_decryption, try_output_recovery_with_ovk,
-        EphemeralKeyBytes,
-    };
-
-    use super::{prf_ock_orchard, CompactAction, OrchardDomain, OrchardNoteEncryption};
-    use crate::{
-        action::Action,
-        keys::{
-            DiversifiedTransmissionKey, Diversifier, EphemeralSecretKey, IncomingViewingKey,
-            OutgoingViewingKey, PreparedIncomingViewingKey,
-        },
-        note::{ExtractedNoteCommitment, Nullifier, RandomSeed, Rho, TransmittedNoteCiphertext},
-        primitives::redpallas,
-        value::{NoteValue, ValueCommitment},
-        Address, Note,
-    };
-
-    #[test]
-    fn test_vectors() {
-        let test_vectors = crate::test_vectors::note_encryption::test_vectors();
-
-        for tv in test_vectors {
-            //
-            // Load the test vector components
-            //
-
-            // Recipient key material
-            let ivk = PreparedIncomingViewingKey::new(
-                &IncomingViewingKey::from_bytes(&tv.incoming_viewing_key).unwrap(),
-            );
-            let ovk = OutgoingViewingKey::from(tv.ovk);
-            let d = Diversifier::from_bytes(tv.default_d);
-            let pk_d = DiversifiedTransmissionKey::from_bytes(&tv.default_pk_d).unwrap();
-
-            // Received Action
-            let cv_net = ValueCommitment::from_bytes(&tv.cv_net).unwrap();
-            let nf_old = Nullifier::from_bytes(&tv.nf_old).unwrap();
-            let rho = Rho::from_nf_old(nf_old);
-            let cmx = ExtractedNoteCommitment::from_bytes(&tv.cmx).unwrap();
-
-            let esk = EphemeralSecretKey::from_bytes(&tv.esk).unwrap();
-            let ephemeral_key = EphemeralKeyBytes(tv.ephemeral_key);
-
-            // Details about the expected note
-            let value = NoteValue::from_raw(tv.v);
-            let rseed = RandomSeed::from_bytes(tv.rseed, &rho).unwrap();
-
-            //
-            // Test the individual components
-            //
-
-            let shared_secret = esk.agree(&pk_d);
-            assert_eq!(shared_secret.to_bytes(), tv.shared_secret);
-
-            let k_enc = shared_secret.kdf_orchard(&ephemeral_key);
-            assert_eq!(k_enc.as_bytes(), tv.k_enc);
-
-            let ock = prf_ock_orchard(&ovk, &cv_net, &cmx.to_bytes(), &ephemeral_key);
-            assert_eq!(ock.as_ref(), tv.ock);
-
-            let recipient = Address::from_parts(d, pk_d);
-            let note = Note::from_parts(recipient, value, rho, rseed).unwrap();
-            assert_eq!(ExtractedNoteCommitment::from(note.commitment()), cmx);
-
-            let action = Action::from_parts(
-                // nf_old is the nullifier revealed by the receiving Action.
-                nf_old,
-                // We don't need a real rk for this test.
-                redpallas::VerificationKey::dummy(),
-                cmx,
-                TransmittedNoteCiphertext {
-                    epk_bytes: ephemeral_key.0,
-                    enc_ciphertext: tv.c_enc,
-                    out_ciphertext: tv.c_out,
-                },
-                cv_net.clone(),
-                (),
-            )
-            .expect("a key returned by VerificationKey::dummy() is vanishingly unlikely to be the identity");
-
-            //
-            // Test decryption
-            // (Tested first because it only requires immutable references.)
-            //
-
-            let domain = OrchardDomain { rho };
-
-            match try_note_decryption(&domain, &ivk, &action) {
-                Some((decrypted_note, decrypted_to, decrypted_memo)) => {
-                    assert_eq!(decrypted_note, note);
-                    assert_eq!(decrypted_to, recipient);
-                    assert_eq!(&decrypted_memo[..], &tv.memo[..]);
-                }
-                None => panic!("Note decryption failed"),
-            }
-
-            match try_compact_note_decryption(&domain, &ivk, &CompactAction::from(&action)) {
-                Some((decrypted_note, decrypted_to)) => {
-                    assert_eq!(decrypted_note, note);
-                    assert_eq!(decrypted_to, recipient);
-                }
-                None => panic!("Compact note decryption failed"),
-            }
-
-            match try_output_recovery_with_ovk(&domain, &ovk, &action, &cv_net, &tv.c_out) {
-                Some((decrypted_note, decrypted_to, decrypted_memo)) => {
-                    assert_eq!(decrypted_note, note);
-                    assert_eq!(decrypted_to, recipient);
-                    assert_eq!(&decrypted_memo[..], &tv.memo[..]);
-                }
-                None => panic!("Output recovery failed"),
-            }
-
-            //
-            // Test encryption
-            //
-
-            let ne = OrchardNoteEncryption::new_with_esk(esk, Some(ovk), note, tv.memo);
-
-            assert_eq!(ne.encrypt_note_plaintext().as_ref(), &tv.c_enc[..]);
-            assert_eq!(
-                &ne.encrypt_outgoing_plaintext(&cv_net, &cmx, &mut OsRng)[..],
-                &tv.c_out[..]
-            );
-        }
     }
 }
