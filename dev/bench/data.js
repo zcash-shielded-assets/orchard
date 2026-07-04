@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783127241806,
+  "lastUpdate": 1783129283182,
   "repoUrl": "https://github.com/zcash-shielded-assets/orchard",
   "entries": {
     "Orchard Benchmarks": [
@@ -539,6 +539,186 @@ window.BENCHMARK_DATA = {
             "name": "default_address",
             "value": 522928,
             "range": "± 22505",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "hanh425@gmail.com",
+            "name": "Hanh Huynh Huu",
+            "username": "hhanh00"
+          },
+          "committer": {
+            "email": "hanh425@gmail.com",
+            "name": "Hanh Huynh Huu",
+            "username": "hhanh00"
+          },
+          "distinct": true,
+          "id": "b32db00a1ade5e6c015af25d595e4a0365a8fe64",
+          "message": "Domain-tied note types: TransmittedNoteCiphertext, Action, Bundle\n\n- TransmittedNoteCiphertext<D: Domain> — ciphertext size from Domain\n- Action<A, D: Domain> — defaults to OrchardDomain\n- Bundle<T, V, D: Domain = OrchardDomain> — defaults to OrchardDomain\n- Main Bundle impl (decrypt, hash) restricted to OrchardDomain\n- D bound satisfied by any zcash_note_encryption::Domain impl\n- Also add zsa/ module with issuance, burn, commitments, circuit",
+          "timestamp": "2026-07-04T09:28:50+08:00",
+          "tree_id": "7b3c067986562429d085d114475ce91ca37248ed",
+          "url": "https://github.com/zcash-shielded-assets/orchard/commit/b32db00a1ade5e6c015af25d595e4a0365a8fe64"
+        },
+        "date": 1783129282253,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "proving/bundle/1",
+            "value": 2776315249,
+            "range": "± 216128608",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/2",
+            "value": 2731743541,
+            "range": "± 8978403",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/3",
+            "value": 3909294244,
+            "range": "± 23504499",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/4",
+            "value": 5133214434,
+            "range": "± 28459804",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/1",
+            "value": 22329268,
+            "range": "± 214712",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/2",
+            "value": 22416900,
+            "range": "± 155681",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/3",
+            "value": 25636632,
+            "range": "± 294399",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/4",
+            "value": 29216893,
+            "range": "± 606109",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/valid",
+            "value": 1579304,
+            "range": "± 3791",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/invalid",
+            "value": 134241,
+            "range": "± 259",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/compact-valid",
+            "value": 1577752,
+            "range": "± 19206",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "compact-note-decryption/invalid",
+            "value": 1415118161,
+            "range": "± 5342848",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/10",
+            "value": 16699452,
+            "range": "± 287655",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/10",
+            "value": 2286466,
+            "range": "± 3124",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/10",
+            "value": 16677026,
+            "range": "± 21529",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/10",
+            "value": 2245710,
+            "range": "± 20756",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/50",
+            "value": 83439313,
+            "range": "± 115004",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/50",
+            "value": 11373875,
+            "range": "± 241087",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/50",
+            "value": 83324267,
+            "range": "± 71954",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/50",
+            "value": 11170458,
+            "range": "± 12077",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/100",
+            "value": 166827072,
+            "range": "± 178660",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/100",
+            "value": 22734352,
+            "range": "± 104710",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/100",
+            "value": 166614935,
+            "range": "± 136570",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/100",
+            "value": 22320630,
+            "range": "± 31248",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "derive_fvk",
+            "value": 489544,
+            "range": "± 27541",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "default_address",
+            "value": 522485,
+            "range": "± 6974",
             "unit": "ns/iter"
           }
         ]
