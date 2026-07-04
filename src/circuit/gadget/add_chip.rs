@@ -20,7 +20,7 @@ pub(crate) struct AddConfig {
 /// A chip implementing a single addition constraint `c = a + b` on a single row.
 #[derive(Debug)]
 #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-pub(in crate::circuit) struct AddChip {
+pub(crate) struct AddChip {
     config: AddConfig,
 }
 
