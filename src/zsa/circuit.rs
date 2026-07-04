@@ -337,7 +337,7 @@ impl OrchardCircuit for OrchardZSA {
             unpack(circuit.additional_zsa_witnesses.clone());
 
         // Construct the ECC chip.
-        let ecc_chip = config.ecc_chip(CircuitVersion::AnchoredBase);
+        let ecc_chip = config.zsa_ecc_chip(CircuitVersion::AnchoredBase);
 
         // Witness private inputs that are used across multiple checks.
         let (psi_nf, psi_old, rho_old, cm_old, g_d_old, ak_P, nk, v_old, v_new, asset) = {
@@ -439,7 +439,7 @@ impl OrchardCircuit for OrchardZSA {
                 .path
                 .map(|typed_path| typed_path.map(|node| node.inner()));
             let merkle_inputs = MerklePath::construct(
-                [config.merkle_chip_1(), config.merkle_chip_2()],
+                [config.zsa_merkle_chip_1(), config.zsa_merkle_chip_2()],
                 OrchardHashDomains::MerkleCrh,
                 circuit.pos,
                 path,
@@ -505,7 +505,7 @@ impl OrchardCircuit for OrchardZSA {
                 v_net_magnitude_sign.clone(),
                 rcv,
                 Some(ZsaValueCommitParams {
-                    sinsemilla_chip: config.sinsemilla_chip_1(),
+                    sinsemilla_chip: config.zsa_sinsemilla_chip_1(),
                     asset_base: asset.clone(),
                 }),
             )?;
@@ -525,15 +525,15 @@ impl OrchardCircuit for OrchardZSA {
         let nf_old = {
             let nf_old = derive_nullifier(
                 layouter.namespace(|| "nf_old = DeriveNullifier_nk(rho_old, psi_nf, cm_old)"),
-                config.poseidon_chip(),
-                config.add_chip(),
+                config.zsa_poseidon_chip(),
+                config.zsa_add_chip(),
                 ecc_chip.clone(),
                 rho_old.clone(),
                 &psi_nf,
                 &cm_old,
                 nk.clone(),
                 Some(ZsaNullifierParams {
-                    cond_swap_chip: config.cond_swap_chip(),
+                    cond_swap_chip: config.zsa_cond_swap_chip(),
                     split_flag: split_flag.clone(),
                 }),
             )?;
@@ -578,9 +578,9 @@ impl OrchardCircuit for OrchardZSA {
                 )?;
 
                 commit_ivk(
-                    config.sinsemilla_chip_1(),
+                    config.zsa_sinsemilla_chip_1(),
                     ecc_chip.clone(),
-                    config.commit_ivk_chip(),
+                    config.zsa_commit_ivk_chip(),
                     layouter.namespace(|| "CommitIvk"),
                     ak,
                     nk,
@@ -631,9 +631,9 @@ impl OrchardCircuit for OrchardZSA {
                 layouter.namespace(|| {
                     "g★_d || pk★_d || i2lebsp_{64}(v) || i2lebsp_{255}(rho) || i2lebsp_{255}(psi)"
                 }),
-                config.sinsemilla_chip_1(),
-                config.ecc_chip(CircuitVersion::AnchoredBase),
-                config.note_commit_chip_old(),
+                config.zsa_sinsemilla_chip_1(),
+                config.zsa_ecc_chip(CircuitVersion::AnchoredBase),
+                config.zsa_note_commit_chip_old(),
                 g_d_old.inner(),
                 pk_d_old.inner(),
                 v_old.clone(),
@@ -641,7 +641,7 @@ impl OrchardCircuit for OrchardZSA {
                 psi_old.clone(),
                 rcm_old,
                 Some(ZsaNoteCommitParams {
-                    cond_swap_chip: config.cond_swap_chip(),
+                    cond_swap_chip: config.zsa_cond_swap_chip(),
                     asset: asset.inner().clone(),
                     is_zatoshi_asset: is_zatoshi_asset.clone(),
                 }),
@@ -699,9 +699,9 @@ impl OrchardCircuit for OrchardZSA {
                 layouter.namespace(|| {
                     "g★_d || pk★_d || i2lebsp_{64}(v) || i2lebsp_{255}(rho) || i2lebsp_{255}(psi)"
                 }),
-                config.sinsemilla_chip_2(),
-                config.ecc_chip(CircuitVersion::AnchoredBase),
-                config.note_commit_chip_new(),
+                config.zsa_sinsemilla_chip_2(),
+                config.zsa_ecc_chip(CircuitVersion::AnchoredBase),
+                config.zsa_note_commit_chip_new(),
                 g_d_new.inner(),
                 pk_d_new.inner(),
                 v_new.clone(),
@@ -709,7 +709,7 @@ impl OrchardCircuit for OrchardZSA {
                 psi_new,
                 rcm_new,
                 Some(ZsaNoteCommitParams {
-                    cond_swap_chip: config.cond_swap_chip(),
+                    cond_swap_chip: config.zsa_cond_swap_chip(),
                     asset: asset.inner().clone(),
                     is_zatoshi_asset: is_zatoshi_asset.clone(),
                 }),
