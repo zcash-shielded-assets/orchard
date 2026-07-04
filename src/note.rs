@@ -528,14 +528,29 @@ impl Note {
         let pk_d_bytes = pk_d.to_bytes();
         let psi = self.psi();
 
-        NoteCommitment::derive(
-            g_d_bytes,
-            pk_d_bytes,
-            self.value,
-            self.rho().0,
-            psi,
-            self.rcm(),
-        )
+        #[cfg(feature = "zsa")]
+        {
+            NoteCommitment::derive_with_asset(
+                g_d_bytes,
+                pk_d_bytes,
+                self.value,
+                self.asset,
+                self.rho().0,
+                psi,
+                self.rcm(),
+            )
+        }
+        #[cfg(not(feature = "zsa"))]
+        {
+            NoteCommitment::derive(
+                g_d_bytes,
+                pk_d_bytes,
+                self.value,
+                self.rho().0,
+                psi,
+                self.rcm(),
+            )
+        }
     }
 
     /// Derives the nullifier for this note.
