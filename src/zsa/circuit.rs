@@ -45,19 +45,19 @@ use crate::{
     note::AssetBase,
 };
 
-/// ZSA-specific circuit configuration using 4/5-bit lookups.
+/// ZSA-specific circuit configuration.
 #[derive(Clone, Debug)]
 pub struct ZsaConfig {
     pub(crate) primary: halo2_proofs::plonk::Column<halo2_proofs::plonk::Instance>,
     pub(crate) q_orchard: halo2_proofs::plonk::Selector,
     pub(crate) advices: [halo2_proofs::plonk::Column<halo2_proofs::plonk::Advice>; 10],
     pub(crate) add_config: crate::circuit::gadget::add_chip::AddConfig,
-    pub(crate) ecc_config: halo2_gadgets::ecc::chip::EccConfig<OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
+    pub(crate) ecc_config: halo2_gadgets::ecc::chip::EccConfig<OrchardFixedBases>,
     pub(crate) poseidon_config: halo2_gadgets::poseidon::Pow5Config<pallas::Base, 3, 2>,
-    pub(crate) merkle_config_1: halo2_gadgets::sinsemilla::merkle::chip::MerkleConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
-    pub(crate) merkle_config_2: halo2_gadgets::sinsemilla::merkle::chip::MerkleConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
-    pub(crate) sinsemilla_config_1: halo2_gadgets::sinsemilla::chip::SinsemillaConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
-    pub(crate) sinsemilla_config_2: halo2_gadgets::sinsemilla::chip::SinsemillaConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
+    pub(crate) merkle_config_1: halo2_gadgets::sinsemilla::merkle::chip::MerkleConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases>,
+    pub(crate) merkle_config_2: halo2_gadgets::sinsemilla::merkle::chip::MerkleConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases>,
+    pub(crate) sinsemilla_config_1: halo2_gadgets::sinsemilla::chip::SinsemillaConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases>,
+    pub(crate) sinsemilla_config_2: halo2_gadgets::sinsemilla::chip::SinsemillaConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases>,
     pub(crate) commit_ivk_config: crate::circuit::commit_ivk::CommitIvkConfig,
     pub(crate) old_note_commit_config: crate::circuit::note_commit::NoteCommitConfig,
     pub(crate) new_note_commit_config: crate::circuit::note_commit::NoteCommitConfig,

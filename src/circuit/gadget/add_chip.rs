@@ -61,7 +61,7 @@ impl AddChip {
 
     /// Constructs an addition chip from the given config.
     #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-    pub(in crate::circuit) fn construct(config: AddConfig) -> Self {
+    pub(crate) fn construct(config: AddConfig) -> Self {
         Self { config }
     }
 }
