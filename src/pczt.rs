@@ -224,7 +224,7 @@ pub struct Output {
     /// - `ephemeral_key`
     /// - `enc_ciphertext`
     /// - `out_ciphertext`
-    pub(crate) encrypted_note: TransmittedNoteCiphertext,
+    pub(crate) encrypted_note: TransmittedNoteCiphertext<crate::note_encryption::OrchardDomain>,
 
     /// The address that will receive the output.
     ///

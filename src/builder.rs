@@ -373,7 +373,7 @@ impl OutputInfo {
         cv_net: &ValueCommitment,
         nf_old: Nullifier,
         mut rng: impl RngCore,
-    ) -> (Note, ExtractedNoteCommitment, TransmittedNoteCiphertext) {
+    ) -> (Note, ExtractedNoteCommitment, TransmittedNoteCiphertext<crate::note_encryption::OrchardDomain>) {
         let rho = Rho::from_nf_old(nf_old);
         let note = Note::new(self.recipient, self.value, rho, &mut rng);
         let cm_new = note.commitment();

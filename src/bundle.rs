@@ -13,7 +13,7 @@ use core::fmt;
 
 use blake2b_simd::Hash as Blake2bHash;
 use nonempty::NonEmpty;
-use zcash_note_encryption::{try_note_decryption, try_output_recovery_with_ovk};
+use zcash_note_encryption::{try_note_decryption, try_output_recovery_with_ovk, Domain, ShieldedOutput};
 
 #[cfg(feature = "std")]
 use memuse::DynamicUsage;
@@ -35,7 +35,7 @@ use crate::{
 use crate::circuit::{Instance, VerifyingKey};
 
 #[cfg(feature = "circuit")]
-impl<T> Action<T> {
+impl<T, D: Domain> Action<T, D> {
     /// Prepares the public instance for this action, for creating and verifying the
     /// bundle proof.
     pub fn to_instance(&self, flags: Flags, anchor: Anchor) -> Instance {
@@ -159,15 +159,15 @@ pub trait Authorization: fmt::Debug {
 }
 
 /// A bundle of actions to be applied to the ledger.
+///
+/// `D` is the note encryption domain that determines the note ciphertext size.
 #[derive(Clone)]
-pub struct Bundle<T: Authorization, V> {
+pub struct Bundle<T: Authorization, V, D: Domain = crate::note_encryption::OrchardDomain> {
     /// The list of actions that make up this bundle.
-    actions: NonEmpty<Action<T::SpendAuth>>,
+    actions: NonEmpty<Action<T::SpendAuth, D>>,
     /// Orchard-specific transaction-level flags for this bundle.
     flags: Flags,
     /// The net value moved out of the Orchard shielded pool.
-    ///
-    /// This is the sum of Orchard spends minus the sum of Orchard outputs.
     value_balance: V,
     /// The root of the Orchard commitment tree that this bundle commits to.
     anchor: Anchor,
@@ -175,18 +175,10 @@ pub struct Bundle<T: Authorization, V> {
     authorization: T,
 }
 
-impl<T: Authorization, V: fmt::Debug> fmt::Debug for Bundle<T, V> {
+impl<T: Authorization, V: fmt::Debug, D: Domain + fmt::Debug> fmt::Debug for Bundle<T, V, D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        /// Helper struct for debug-printing actions without exposing `NonEmpty`.
-        struct Actions<'a, T>(&'a NonEmpty<Action<T>>);
-        impl<T: fmt::Debug> fmt::Debug for Actions<'_, T> {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.debug_list().entries(self.0.iter()).finish()
-            }
-        }
-
         f.debug_struct("Bundle")
-            .field("actions", &Actions(&self.actions))
+            .field("actions", &self.actions)
             .field("flags", &self.flags)
             .field("value_balance", &self.value_balance)
             .field("anchor", &self.anchor)
@@ -210,15 +202,11 @@ pub(crate) fn validate_proof_size(proof: &Proof, num_actions: usize) -> Result<(
     }
 }
 
-impl<T: Authorization, V> Bundle<T, V> {
-    /// Constructs a `Bundle` from its constituent parts without validating the authorization.
-    ///
-    /// This does not check the proof size, so it must only be used with an authorization that
-    /// either carries no proof or carries a proof that is already known to be canonical (e.g.
-    /// one produced by [`Proof::create`]). Construction from untrusted parts must instead go
-    /// through a checked, authorization-specific constructor such as [`Bundle::try_from_parts`].
+/// Default bundle impl for the primary OrchardDomain (vanilla / Ironwood).
+/// ZSA bundles use the `zsa` module.
+impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
     pub(crate) fn from_parts_unchecked(
-        actions: NonEmpty<Action<T::SpendAuth>>,
+        actions: NonEmpty<Action<T::SpendAuth, OrchardDomain>>,
         flags: Flags,
         value_balance: V,
         anchor: Anchor,
@@ -234,7 +222,7 @@ impl<T: Authorization, V> Bundle<T, V> {
     }
 
     /// Returns the list of actions that make up this bundle.
-    pub fn actions(&self) -> &NonEmpty<Action<T::SpendAuth>> {
+    pub fn actions(&self) -> &NonEmpty<Action<T::SpendAuth, OrchardDomain>> {
         &self.actions
     }
 
@@ -267,7 +255,7 @@ impl<T: Authorization, V> Bundle<T, V> {
     pub fn try_map_value_balance<V0, E, F: FnOnce(V) -> Result<V0, E>>(
         self,
         f: F,
-    ) -> Result<Bundle<T, V0>, E> {
+    ) -> Result<Bundle<T, V0, OrchardDomain>, E> {
         Ok(Bundle {
             actions: self.actions,
             flags: self.flags,
@@ -283,7 +271,7 @@ impl<T: Authorization, V> Bundle<T, V> {
         context: &mut R,
         mut spend_auth: impl FnMut(&mut R, &T, T::SpendAuth) -> U::SpendAuth,
         step: impl FnOnce(&mut R, T) -> U,
-    ) -> Bundle<U, V> {
+    ) -> Bundle<U, V, OrchardDomain> {
         let authorization = self.authorization;
         Bundle {
             actions: self
@@ -302,7 +290,7 @@ impl<T: Authorization, V> Bundle<T, V> {
         context: &mut R,
         mut spend_auth: impl FnMut(&mut R, &T, T::SpendAuth) -> Result<U::SpendAuth, E>,
         step: impl FnOnce(&mut R, T) -> Result<U, E>,
-    ) -> Result<Bundle<U, V>, E> {
+    ) -> Result<Bundle<U, V, OrchardDomain>, E> {
         let authorization = self.authorization;
         let new_actions = self
             .actions
@@ -334,7 +322,10 @@ impl<T: Authorization, V> Bundle<T, V> {
     pub fn decrypt_outputs_with_keys(
         &self,
         keys: &[IncomingViewingKey],
-    ) -> Vec<(usize, IncomingViewingKey, Note, Address, [u8; 512])> {
+    ) -> Vec<(usize, IncomingViewingKey, Note, Address, [u8; 512])>
+    where
+        Action<T::SpendAuth, OrchardDomain>: ShieldedOutput<OrchardDomain>,
+    {
         let prepared_keys: Vec<_> = keys
             .iter()
             .map(|ivk| (ivk, PreparedIncomingViewingKey::new(ivk)))
@@ -415,7 +406,7 @@ impl<T: Authorization, V> Bundle<T, V> {
     }
 }
 
-impl<T: Authorization, V: Copy + Into<i64>> Bundle<T, V> {
+impl<T: Authorization, V: Copy + Into<i64>> Bundle<T, V, OrchardDomain> {
     /// Computes a commitment to the effects of this bundle, suitable for inclusion within
     /// a transaction ID.
     pub fn commitment(&self) -> BundleCommitment {
@@ -449,7 +440,7 @@ impl Authorization for EffectsOnly {
     type SpendAuth = ();
 }
 
-impl<V> Bundle<EffectsOnly, V> {
+impl<V> Bundle<EffectsOnly, V, OrchardDomain> {
     /// Constructs an effects-only `Bundle` from its constituent parts.
     ///
     /// An effects-only bundle carries no proof, so there is no proof size to validate.
@@ -536,7 +527,7 @@ pub enum ProofSizeEnforcement {
     Strict,
 }
 
-impl<V> Bundle<Authorized, V> {
+impl<V> Bundle<Authorized, V, OrchardDomain> {
     /// Constructs an authorized `Bundle` from its constituent parts, rejecting a proof whose
     /// length is not the canonical size for the number of actions.
     ///
@@ -583,7 +574,7 @@ impl<V> Bundle<Authorized, V> {
 }
 
 #[cfg(feature = "std")]
-impl<V: DynamicUsage> DynamicUsage for Bundle<Authorized, V> {
+impl<V: DynamicUsage> DynamicUsage for Bundle<Authorized, V, OrchardDomain> {
     fn dynamic_usage(&self) -> usize {
         self.actions.tail.dynamic_usage()
             + self.value_balance.dynamic_usage()

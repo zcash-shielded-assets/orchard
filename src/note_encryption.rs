@@ -330,7 +330,7 @@ pub type OrchardNoteEncryption = zcash_note_encryption::NoteEncryption<OrchardDo
 // ShieldedOutput impls
 // ---------------------------------------------------------------------------
 
-impl<T> ShieldedOutput<OrchardDomain> for Action<T> {
+impl<T> ShieldedOutput<OrchardDomain> for Action<T, OrchardDomain> {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
         EphemeralKeyBytes(self.encrypted_note().epk_bytes)
     }
@@ -393,8 +393,8 @@ impl fmt::Debug for CompactAction {
     }
 }
 
-impl<T> From<&Action<T>> for CompactAction {
-    fn from(action: &Action<T>) -> Self {
+impl<T> From<&Action<T, OrchardDomain>> for CompactAction {
+    fn from(action: &Action<T, OrchardDomain>) -> Self {
         CompactAction {
             nullifier: *action.nullifier(),
             cmx: *action.cmx(),
