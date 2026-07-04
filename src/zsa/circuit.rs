@@ -77,9 +77,10 @@ impl ZsaConfig {
     pub(crate) fn zsa_note_commit_chip_old(&self) -> NoteCommitChip { NoteCommitChip::construct(self.old_note_commit_config.clone()) }
     pub(crate) fn zsa_note_commit_chip_new(&self) -> NoteCommitChip { NoteCommitChip::construct(self.new_note_commit_config.clone()) }
     pub(crate) fn zsa_cond_swap_chip(&self) -> halo2_gadgets::utilities::cond_swap::CondSwapChip<pallas::Base> {
-        // CondSwapChip not configured in ZsaConfig; placeholder for now.
-        // In the full ZSA circuit, this should come from a configured CondSwapConfig.
-        unimplemented!("CondSwapChip configuration needed for ZSA circuit")
+        // Reuses the CondSwapConfig already configured inside the Merkle chip
+        halo2_gadgets::utilities::cond_swap::CondSwapChip::construct(
+            self.merkle_config_1.cond_swap_config().clone(),
+        )
     }
 }
 
