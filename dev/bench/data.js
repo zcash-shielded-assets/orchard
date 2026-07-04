@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783134354610,
+  "lastUpdate": 1783134840864,
   "repoUrl": "https://github.com/zcash-shielded-assets/orchard",
   "entries": {
     "Orchard Benchmarks": [
@@ -1979,6 +1979,186 @@ window.BENCHMARK_DATA = {
             "name": "default_address",
             "value": 522068,
             "range": "± 2031",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "hanh425@gmail.com",
+            "name": "Hanh Huynh Huu",
+            "username": "hhanh00"
+          },
+          "committer": {
+            "email": "hanh425@gmail.com",
+            "name": "Hanh Huynh Huu",
+            "username": "hhanh00"
+          },
+          "distinct": true,
+          "id": "2ef797894be7abaeeca3dd19e029f842232db869",
+          "message": "Separate ZsaConfig, fix construct visibility\n\n- ZsaConfig uses vanilla LookupRangeCheckConfig (not PallasLookupRangeCheck4_5BConfig)\n- AddChip::construct is now pub(crate)\n- ZsaNoteCommitParams defined in zsa/circuit.rs\n- 12 remaining type mismatches in configure function\n- Default and --features zsa clean",
+          "timestamp": "2026-07-04T11:01:49+08:00",
+          "tree_id": "d42389513f115e0319bb458a670b4d5ac3b161f6",
+          "url": "https://github.com/zcash-shielded-assets/orchard/commit/2ef797894be7abaeeca3dd19e029f842232db869"
+        },
+        "date": 1783134839382,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "proving/bundle/1",
+            "value": 2610783118,
+            "range": "± 17564177",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/2",
+            "value": 2600052208,
+            "range": "± 15360468",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/3",
+            "value": 3720068934,
+            "range": "± 19724803",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "proving/bundle/4",
+            "value": 4844041410,
+            "range": "± 40913149",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/1",
+            "value": 20580079,
+            "range": "± 500291",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/2",
+            "value": 20593258,
+            "range": "± 160566",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/3",
+            "value": 23612801,
+            "range": "± 146560",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "verifying/bundle/4",
+            "value": 26894060,
+            "range": "± 229369",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/valid",
+            "value": 1515227,
+            "range": "± 10768",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/invalid",
+            "value": 124725,
+            "range": "± 178",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "note-decryption/compact-valid",
+            "value": 1512429,
+            "range": "± 9499",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "compact-note-decryption/invalid",
+            "value": 1320774018,
+            "range": "± 1865399",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/10",
+            "value": 15970461,
+            "range": "± 24420",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/10",
+            "value": 2112880,
+            "range": "± 22908",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/10",
+            "value": 15948070,
+            "range": "± 29625",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/10",
+            "value": 2078105,
+            "range": "± 2482",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/50",
+            "value": 79834639,
+            "range": "± 179279",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/50",
+            "value": 10513401,
+            "range": "± 191604",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/50",
+            "value": 79759386,
+            "range": "± 224171",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/50",
+            "value": 10341127,
+            "range": "± 39540",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/valid/100",
+            "value": 159677690,
+            "range": "± 243999",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/invalid/100",
+            "value": 21005886,
+            "range": "± 50619",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-valid/100",
+            "value": 159397374,
+            "range": "± 94848",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch-note-decryption/compact-invalid/100",
+            "value": 20672900,
+            "range": "± 61055",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "derive_fvk",
+            "value": 453264,
+            "range": "± 954",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "default_address",
+            "value": 489861,
+            "range": "± 2591",
             "unit": "ns/iter"
           }
         ]
