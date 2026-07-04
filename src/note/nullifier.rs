@@ -74,6 +74,7 @@ impl Nullifier {
         rho: pallas::Base,
         psi: pallas::Base,
         cm: NoteCommitment,
+        _is_split_note: bool,
     ) -> Self {
         let k = pallas::Point::hash_to_curve("z.cash:Orchard")(b"K");
 

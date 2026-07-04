@@ -12,7 +12,7 @@ use ff::PrimeField;
 use group::GroupEncoding;
 use pasta_curves::pallas;
 use rand::RngCore;
-use subtle::CtOption;
+use subtle::{ConditionallySelectable, CtOption};
 
 use crate::{
     keys::{EphemeralSecretKey, FullViewingKey, Scope, SpendingKey},
@@ -236,6 +236,17 @@ impl RandomSeed {
     }
 }
 
+impl ConditionallySelectable for RandomSeed {
+    fn conditional_select(a: &Self, b: &Self, choice: subtle::Choice) -> Self {
+        let result: alloc::vec::Vec<u8> = a.0
+            .iter()
+            .zip(b.0.iter())
+            .map(|(a_i, b_i)| u8::conditional_select(a_i, b_i, choice))
+            .collect();
+        RandomSeed(<[u8; 32]>::try_from(result).unwrap())
+    }
+}
+
 /// A discrete amount of funds received by an address.
 #[derive(Debug, Copy, Clone)]
 pub struct Note {
@@ -246,9 +257,19 @@ pub struct Note {
     /// The asset of this note.
     asset: AssetBase,
     /// A unique creation ID for this note.
-    rho: Rho,
+    ///
+    /// For notes created by spending an existing note, `rho` is derived from the
+    /// nullifier of the spent note.
+    ///
+    /// For issuance notes, `rho` is initially unset and later deterministically
+    /// derived when `update_rho_for_issuance_note` is called.
+    rho: Option<Rho>,
     /// The seed randomness for various note components.
     rseed: RandomSeed,
+    /// The seed randomness for split notes.
+    ///
+    /// If this is not a split note, this field is never selected.
+    rseed_split_note: CtOption<RandomSeed>,
     /// The note plaintext version, determining rcm derivation strategy.
     version: NoteVersion,
 }
@@ -290,8 +311,9 @@ impl Note {
             recipient,
             value,
             asset,
-            rho,
+            rho: Some(rho),
             rseed,
+            rseed_split_note: CtOption::new(rseed, 0u8.into()),
             version,
         };
         CtOption::new(note, note.commitment_inner().is_some())
@@ -325,7 +347,7 @@ impl Note {
         }
     }
 
-    /// Creates a new issuance note with zero rho.
+    /// Creates a new issuance note with an uninitialized `rho`.
     #[cfg(feature = "zsa")]
     pub(crate) fn new_issue_note(
         recipient: Address,
@@ -333,9 +355,17 @@ impl Note {
         asset: AssetBase,
         mut rng: impl RngCore,
     ) -> Self {
-        let rho = Rho::from_bytes(&pallas::Base::zero().to_repr()).unwrap();
-        let rseed = RandomSeed::random(&mut rng, &rho);
-        Note::from_parts(recipient, value, asset, rho, rseed, NoteVersion::V3).unwrap()
+        let dummy_rho = Rho::from_bytes(&pallas::Base::zero().to_repr()).unwrap();
+        let rseed = RandomSeed::random(&mut rng, &dummy_rho);
+        Note {
+            recipient,
+            value,
+            asset,
+            rho: None,
+            rseed,
+            rseed_split_note: CtOption::new(rseed, 0u8.into()),
+            version: NoteVersion::V3,
+        }
     }
 
     /// Updates the rho and rseed for issuance note derivation.
@@ -354,9 +384,9 @@ impl Note {
             &index_action.to_le_bytes(),
             &index_note.to_le_bytes(),
         ));
-        self.rho = Rho::from_bytes(&rho_field.to_repr()).unwrap();
+        self.rho = Some(Rho::from_bytes(&rho_field.to_repr()).unwrap());
         loop {
-            self.rseed = RandomSeed::random(&mut rng, &self.rho);
+            self.rseed = RandomSeed::random(&mut rng, &self.rho());
             if self.commitment_inner().is_some().into() {
                 break;
             }
@@ -411,19 +441,38 @@ impl Note {
 
     /// Derives the ephemeral secret key for this note.
     pub(crate) fn esk(&self) -> EphemeralSecretKey {
-        EphemeralSecretKey(self.rseed.esk(&self.rho))
+        EphemeralSecretKey(self.rseed.esk(&self.rho()))
     }
 
     /// Returns rho of this note.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called on an issuance note before `update_rho_for_issuance_note`.
     pub fn rho(&self) -> Rho {
         self.rho
+            .expect("must call Note::update_rho_for_issuance_note first")
     }
 
-    /// Returns whether this note has a non-zero rho value.
-    /// Used by issuance tests to check if rho has been set.
+    /// Returns whether this note has an initialized rho value.
     #[cfg(test)]
     pub(crate) fn has_rho(&self) -> bool {
-        self.rho.0 != pallas::Base::zero()
+        self.rho.is_some()
+    }
+
+    /// Creates a split note from a Custom Asset note, for use on the Spend side
+    /// of an Output-only Action.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self.asset().is_zatoshi()`.
+    #[cfg(feature = "zsa")]
+    pub(crate) fn create_split_note(self, rng: &mut impl RngCore) -> Self {
+        assert!(bool::from(!self.asset().is_zatoshi()));
+        Note {
+            rseed_split_note: CtOption::new(RandomSeed::random(rng, &self.rho()), 1u8.into()),
+            ..self
+        }
     }
 
     /// Returns the version of this note.
@@ -483,7 +532,7 @@ impl Note {
             g_d_bytes,
             pk_d_bytes,
             self.value,
-            self.rho.0,
+            self.rho().0,
             psi,
             self.rcm(),
         )
@@ -491,7 +540,14 @@ impl Note {
 
     /// Derives the nullifier for this note.
     pub fn nullifier(&self, fvk: &FullViewingKey) -> Nullifier {
-        Nullifier::derive(fvk.nk(), self.rho.0, self.psi(), self.commitment())
+        let selected_rseed = self.rseed_split_note.unwrap_or(self.rseed);
+        Nullifier::derive(
+            fvk.nk(),
+            self.rho().0,
+            selected_rseed.psi(&self.rho()),
+            self.commitment(),
+            self.rseed_split_note.is_some().into(),
+        )
     }
 }
 
@@ -527,6 +583,7 @@ pub mod testing {
         address::testing::arb_address, note::nullifier::testing::arb_nullifier, value::NoteValue,
     };
 
+    use subtle::CtOption;
     use super::{AssetBase, Note, NoteVersion, RandomSeed, Rho};
 
     prop_compose! {
@@ -547,8 +604,9 @@ pub mod testing {
                 recipient,
                 value,
                 asset: AssetBase::zatoshi(),
-                rho,
+                rho: Some(rho),
                 rseed,
+                rseed_split_note: CtOption::new(rseed, 0u8.into()),
                 version,
             }
         }
@@ -570,8 +628,9 @@ pub mod testing {
                 recipient,
                 value,
                 asset: AssetBase::custom(&crate::note::AssetId::new_v0(&ik, &asset_desc_hash)),
-                rho,
+                rho: Some(rho),
                 rseed,
+                rseed_split_note: CtOption::new(rseed, 0u8.into()),
                 version: NoteVersion::V3,
             }
         }
