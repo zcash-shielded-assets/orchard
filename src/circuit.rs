@@ -35,7 +35,7 @@ use crate::{
     note::{
         commitment::{NoteCommitTrapdoor, NoteCommitment},
         nullifier::Nullifier,
-        ExtractedNoteCommitment, Note, Rho,
+        AssetBase, ExtractedNoteCommitment, Note, Rho,
     },
     primitives::redpallas::{SpendAuth, VerificationKey},
     spec::NonIdentityPallasPoint,
@@ -60,14 +60,19 @@ use halo2_gadgets::{
 };
 
 #[cfg(not(feature = "unstable-voting-circuits"))]
-mod commit_ivk;
+pub(crate) mod commit_ivk;
 #[cfg(feature = "unstable-voting-circuits")]
 pub mod commit_ivk;
 pub mod gadget;
 #[cfg(not(feature = "unstable-voting-circuits"))]
-mod note_commit;
+pub(crate) mod note_commit;
 #[cfg(feature = "unstable-voting-circuits")]
 pub mod note_commit;
+
+#[cfg(feature = "zsa-circuit")]
+pub(crate) mod derive_nullifier;
+#[cfg(feature = "zsa-circuit")]
+pub(crate) mod value_commit_orchard;
 
 pub use crate::Proof;
 
@@ -75,15 +80,77 @@ pub use crate::Proof;
 const K: u32 = 11;
 
 // Absolute offsets for public inputs.
-const ANCHOR: usize = 0;
-const CV_NET_X: usize = 1;
-const CV_NET_Y: usize = 2;
-const NF_OLD: usize = 3;
-const RK_X: usize = 4;
-const RK_Y: usize = 5;
-const CMX: usize = 6;
-const ENABLE_SPEND: usize = 7;
-const ENABLE_OUTPUT: usize = 8;
+pub(crate) const ANCHOR: usize = 0;
+pub(crate) const CV_NET_X: usize = 1;
+pub(crate) const CV_NET_Y: usize = 2;
+pub(crate) const NF_OLD: usize = 3;
+pub(crate) const RK_X: usize = 4;
+pub(crate) const RK_Y: usize = 5;
+pub(crate) const CMX: usize = 6;
+pub(crate) const ENABLE_SPEND: usize = 7;
+pub(crate) const ENABLE_OUTPUT: usize = 8;
+#[cfg(feature = "zsa-circuit")]
+pub(crate) const ENABLE_ZSA: usize = 9;
+
+/// The `OrchardCircuit` trait defines an interface for vanilla and ZSA circuit flavors.
+#[cfg(feature = "zsa-circuit")]
+pub trait OrchardCircuit: Sized + Default {
+    type Config: Clone;
+    fn configure(meta: &mut plonk::ConstraintSystem<pallas::Base>) -> Self::Config;
+    fn synthesize(
+        circuit: &Witnesses,
+        config: Self::Config,
+        layouter: impl Layouter<pallas::Base>,
+    ) -> Result<(), plonk::Error>;
+    fn build_additional_zsa_witnesses(
+        psi_nf: pallas::Base,
+        asset: AssetBase,
+        split_flag: bool,
+    ) -> Value<AdditionalZsaWitnesses>;
+}
+
+/// ZSA-specific witnesses for the action circuit.
+#[cfg(feature = "zsa-circuit")]
+#[derive(Clone, Debug)]
+pub struct AdditionalZsaWitnesses {
+    pub(crate) psi_nf: pallas::Base,
+    pub(crate) asset: AssetBase,
+    pub(crate) split_flag: bool,
+}
+
+/// Witnesses for the Orchard action circuit.
+#[derive(Clone, Debug, Default)]
+pub struct Witnesses {
+    pub(crate) path: Value<[MerkleHashOrchard; MERKLE_DEPTH_ORCHARD]>,
+    pub(crate) pos: Value<u32>,
+    pub(crate) g_d_old: Value<NonIdentityPallasPoint>,
+    pub(crate) pk_d_old: Value<DiversifiedTransmissionKey>,
+    pub(crate) v_old: Value<NoteValue>,
+    pub(crate) rho_old: Value<Rho>,
+    pub(crate) psi_old: Value<pallas::Base>,
+    pub(crate) rcm_old: Value<NoteCommitTrapdoor>,
+    pub(crate) cm_old: Value<NoteCommitment>,
+    pub(crate) alpha: Value<pallas::Scalar>,
+    pub(crate) ak: Value<SpendValidatingKey>,
+    pub(crate) nk: Value<NullifierDerivingKey>,
+    pub(crate) rivk: Value<CommitIvkRandomness>,
+    pub(crate) g_d_new: Value<NonIdentityPallasPoint>,
+    pub(crate) pk_d_new: Value<DiversifiedTransmissionKey>,
+    pub(crate) v_new: Value<NoteValue>,
+    pub(crate) psi_new: Value<pallas::Base>,
+    pub(crate) rcm_new: Value<NoteCommitTrapdoor>,
+    pub(crate) rcv: Value<ValueCommitTrapdoor>,
+    #[cfg(feature = "zsa-circuit")]
+    pub(crate) additional_zsa_witnesses: Value<AdditionalZsaWitnesses>,
+}
+
+/// Unpacks additional ZSA witnesses into separate values.
+#[cfg(feature = "zsa-circuit")]
+pub(crate) fn unpack(
+    zsa_values: Value<AdditionalZsaWitnesses>,
+) -> (Value<pallas::Base>, Value<AssetBase>, Value<bool>) {
+    (zsa_values.clone().map(|v| v.psi_nf), zsa_values.clone().map(|v| v.asset), zsa_values.map(|v| v.split_flag))
+}
 
 /// Configuration needed to use the Orchard Action circuit.
 #[derive(Clone, Debug)]

@@ -1453,7 +1453,7 @@ impl NoteCommitChip {
     #[allow(non_snake_case)]
     #[allow(clippy::many_single_char_names)]
     #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-    pub(in crate::circuit) fn configure(
+    pub(crate) fn configure(
         meta: &mut ConstraintSystem<pallas::Base>,
         advices: [Column<Advice>; 10],
         sinsemilla_config: SinsemillaConfig<
@@ -1574,14 +1574,14 @@ impl NoteCommitChip {
 
     /// Constructs the chip from a [`NoteCommitConfig`].
     #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-    pub(in crate::circuit) fn construct(config: NoteCommitConfig) -> Self {
+    pub(crate) fn construct(config: NoteCommitConfig) -> Self {
         Self { config }
     }
 }
 
 /// Gadget functions for `NoteCommit` operations.
 #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-pub(in crate::circuit) mod gadgets {
+pub(crate) mod gadgets {
     use halo2_proofs::circuit::{Chip, Value};
 
     use super::*;
@@ -1591,7 +1591,7 @@ pub(in crate::circuit) mod gadgets {
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-    pub(in crate::circuit) fn note_commit(
+    pub(crate) fn note_commit(
         mut layouter: impl Layouter<pallas::Base>,
         chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
         ecc_chip: EccChip<OrchardFixedBases>,
@@ -2380,4 +2380,12 @@ mod tests {
             assert_eq!(prover.verify(), Ok(()));
         }
     }
+}
+
+/// ZSA-specific note commitment parameters.
+#[cfg(feature = "zsa-circuit")]
+pub struct ZsaNoteCommitParams {
+    pub cond_swap_chip: halo2_gadgets::utilities::cond_swap::CondSwapChip<pallas::Base>,
+    pub asset: halo2_gadgets::ecc::NonIdentityPoint<pallas::Affine, halo2_gadgets::ecc::chip::EccChip<crate::constants::OrchardFixedBases>>,
+    pub is_zatoshi_asset: halo2_proofs::circuit::AssignedCell<pallas::Base, pallas::Base>,
 }
