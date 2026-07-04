@@ -52,27 +52,27 @@ pub struct ZsaConfig {
     pub(crate) q_orchard: halo2_proofs::plonk::Selector,
     pub(crate) advices: [halo2_proofs::plonk::Column<halo2_proofs::plonk::Advice>; 10],
     pub(crate) add_config: crate::circuit::gadget::add_chip::AddConfig,
-    pub(crate) ecc_config: halo2_gadgets::ecc::chip::EccConfig<OrchardFixedBases>,
+    pub(crate) ecc_config: halo2_gadgets::ecc::chip::EccConfig<OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
     pub(crate) poseidon_config: halo2_gadgets::poseidon::Pow5Config<pallas::Base, 3, 2>,
-    pub(crate) merkle_config_1: halo2_gadgets::sinsemilla::merkle::chip::MerkleConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases>,
-    pub(crate) merkle_config_2: halo2_gadgets::sinsemilla::merkle::chip::MerkleConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases>,
-    pub(crate) sinsemilla_config_1: halo2_gadgets::sinsemilla::chip::SinsemillaConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases>,
-    pub(crate) sinsemilla_config_2: halo2_gadgets::sinsemilla::chip::SinsemillaConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases>,
+    pub(crate) merkle_config_1: halo2_gadgets::sinsemilla::merkle::chip::MerkleConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
+    pub(crate) merkle_config_2: halo2_gadgets::sinsemilla::merkle::chip::MerkleConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
+    pub(crate) sinsemilla_config_1: halo2_gadgets::sinsemilla::chip::SinsemillaConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
+    pub(crate) sinsemilla_config_2: halo2_gadgets::sinsemilla::chip::SinsemillaConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
     pub(crate) commit_ivk_config: crate::circuit::commit_ivk::CommitIvkConfig,
     pub(crate) old_note_commit_config: crate::circuit::note_commit::NoteCommitConfig,
     pub(crate) new_note_commit_config: crate::circuit::note_commit::NoteCommitConfig,
 }
 
 impl ZsaConfig {
-    pub(crate) fn zsa_ecc_chip(&self, version: halo2_gadgets::ecc::chip::CircuitVersion) -> EccChip<OrchardFixedBases> {
-        EccChip::construct(self.ecc_config.clone(), version)
+    pub(crate) fn zsa_ecc_chip(&self, version: halo2_gadgets::ecc::chip::CircuitVersion) -> EccChip<OrchardFixedBases, PallasLookupRangeCheck4_5BConfig> {
+        EccChip::<OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>::construct(self.ecc_config.clone(), version)
     }
     pub(crate) fn zsa_add_chip(&self) -> AddChip { AddChip::construct(self.add_config.clone()) }
     pub(crate) fn zsa_poseidon_chip(&self) -> PoseidonChip<pallas::Base, 3, 2> { PoseidonChip::construct(self.poseidon_config.clone()) }
-    pub(crate) fn zsa_sinsemilla_chip_1(&self) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> { SinsemillaChip::construct(self.sinsemilla_config_1.clone()) }
-    pub(crate) fn zsa_sinsemilla_chip_2(&self) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> { SinsemillaChip::construct(self.sinsemilla_config_2.clone()) }
-    pub(crate) fn zsa_merkle_chip_1(&self) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> { MerkleChip::construct(self.merkle_config_1.clone()) }
-    pub(crate) fn zsa_merkle_chip_2(&self) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> { MerkleChip::construct(self.merkle_config_2.clone()) }
+    pub(crate) fn zsa_sinsemilla_chip_1(&self) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig> { SinsemillaChip::construct(self.sinsemilla_config_1.clone()) }
+    pub(crate) fn zsa_sinsemilla_chip_2(&self) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig> { SinsemillaChip::construct(self.sinsemilla_config_2.clone()) }
+    pub(crate) fn zsa_merkle_chip_1(&self) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig> { MerkleChip::construct(self.merkle_config_1.clone()) }
+    pub(crate) fn zsa_merkle_chip_2(&self) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig> { MerkleChip::construct(self.merkle_config_2.clone()) }
     pub(crate) fn zsa_commit_ivk_chip(&self) -> CommitIvkChip { CommitIvkChip::construct(self.commit_ivk_config.clone()) }
     pub(crate) fn zsa_note_commit_chip_old(&self) -> NoteCommitChip { NoteCommitChip::construct(self.old_note_commit_config.clone()) }
     pub(crate) fn zsa_note_commit_chip_new(&self) -> NoteCommitChip { NoteCommitChip::construct(self.new_note_commit_config.clone()) }
@@ -337,12 +337,12 @@ impl OrchardCircuit for OrchardZSA {
         // Configuration to handle decomposition and canonicity checking
         // for NoteCommit_old.
         let old_note_commit_config =
-            NoteCommitChip::configure(meta, advices, sinsemilla_config_1.clone());
+            NoteCommitChip::<PallasLookupRangeCheck4_5BConfig>::configure(meta, advices, sinsemilla_config_1.clone());
 
         // Configuration to handle decomposition and canonicity checking
         // for NoteCommit_new.
         let new_note_commit_config =
-            NoteCommitChip::configure(meta, advices, sinsemilla_config_2.clone());
+            NoteCommitChip::<PallasLookupRangeCheck4_5BConfig>::configure(meta, advices, sinsemilla_config_2.clone());
 
         ZsaConfig {
             primary,

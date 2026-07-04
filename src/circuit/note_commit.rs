@@ -31,7 +31,7 @@ use halo2_gadgets::{
     },
     utilities::{
         bool_check,
-        lookup_range_check::{LookupRangeCheck, LookupRangeCheckConfig},
+        lookup_range_check::{LookupRangeCheck, LookupRangeCheckConfig, PallasLookupRangeCheck},
         FieldValue, RangeConstrained,
     },
 };
@@ -1425,30 +1425,30 @@ impl YCanonicity {
 /// Sinsemilla configuration.
 #[allow(non_snake_case)]
 #[derive(Clone, Debug)]
-pub struct NoteCommitConfig {
-    b: DecomposeB,
-    d: DecomposeD,
-    e: DecomposeE,
-    g: DecomposeG,
-    h: DecomposeH,
-    g_d: GdCanonicity,
-    pk_d: PkdCanonicity,
-    value: ValueCanonicity,
-    rho: RhoCanonicity,
-    psi: PsiCanonicity,
-    y_canon: YCanonicity,
-    advices: [Column<Advice>; 10],
-    sinsemilla_config:
-        SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+pub struct NoteCommitConfig<Lookup: PallasLookupRangeCheck = LookupRangeCheckConfig<pallas::Base, 10>> {
+    pub(crate) b: DecomposeB,
+    pub(crate) d: DecomposeD,
+    pub(crate) e: DecomposeE,
+    pub(crate) g: DecomposeG,
+    pub(crate) h: DecomposeH,
+    pub(crate) g_d: GdCanonicity,
+    pub(crate) pk_d: PkdCanonicity,
+    pub(crate) value: ValueCanonicity,
+    pub(crate) rho: RhoCanonicity,
+    pub(crate) psi: PsiCanonicity,
+    pub(crate) y_canon: YCanonicity,
+    pub(crate) advices: [Column<Advice>; 10],
+    pub(crate) sinsemilla_config:
+        SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
 }
 
 /// A Halo 2 chip that proves correct evaluation of the `NoteCommit` gadget.
 #[derive(Clone, Debug)]
-pub struct NoteCommitChip {
-    config: NoteCommitConfig,
+pub struct NoteCommitChip<Lookup: PallasLookupRangeCheck = LookupRangeCheckConfig<pallas::Base, 10>> {
+    config: NoteCommitConfig<Lookup>,
 }
 
-impl NoteCommitChip {
+impl<Lookup: PallasLookupRangeCheck> NoteCommitChip<Lookup> {
     /// Configures the chip's gates, Sinsemilla instances, and canonicity checks.
     #[allow(non_snake_case)]
     #[allow(clippy::many_single_char_names)]
@@ -1460,8 +1460,9 @@ impl NoteCommitChip {
             OrchardHashDomains,
             OrchardCommitDomains,
             OrchardFixedBases,
+            Lookup,
         >,
-    ) -> NoteCommitConfig {
+    ) -> NoteCommitConfig<Lookup> {
         // Useful constants
         let two = pallas::Base::from(2);
         let two_pow_2 = pallas::Base::from(1 << 2);
@@ -1574,7 +1575,7 @@ impl NoteCommitChip {
 
     /// Constructs the chip from a [`NoteCommitConfig`].
     #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-    pub(crate) fn construct(config: NoteCommitConfig) -> Self {
+    pub(crate) fn construct(config: NoteCommitConfig<Lookup>) -> Self {
         Self { config }
     }
 }
