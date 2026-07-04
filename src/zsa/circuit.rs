@@ -35,6 +35,7 @@ use crate::{
             add_chip::AddChip, assign_free_advice, assign_is_zatoshi_asset, assign_split_flag,
         },
         note_commit::{gadgets::note_commit, NoteCommitChip, ZsaNoteCommitParams},
+        OrchardCircuitVersion,
         unpack,
         value_commit_orchard::{gadgets::value_commit_orchard, ZsaValueCommitParams},
         AdditionalZsaWitnesses, Config, OrchardCircuit, Witnesses, ANCHOR, CMX, CV_NET_X, CV_NET_Y,
@@ -885,6 +886,17 @@ impl OrchardCircuit for OrchardZSA {
             asset,
             split_flag,
         })
+    }
+
+    fn proof_size(num_actions: usize) -> usize {
+        // ZSA proof: base + per-action (measured at build time from CircuitCost)
+        const ZSA_PROOF_BASE: usize = 2720;
+        const ZSA_PROOF_PER_ACTION: usize = 2400;
+        ZSA_PROOF_BASE + ZSA_PROOF_PER_ACTION * num_actions
+    }
+
+    fn circuit_version() -> OrchardCircuitVersion {
+        OrchardCircuitVersion::FixedPostNu6_2
     }
 }
 

@@ -108,6 +108,10 @@ pub trait OrchardCircuit: Sized + Default {
         config: Self::Config,
         layouter: impl Layouter<pallas::Base>,
     ) -> Result<(), plonk::Error>;
+    /// The canonical proof size for `num_actions` actions.
+    fn proof_size(num_actions: usize) -> usize;
+    /// The circuit version this flavor targets.
+    fn circuit_version() -> OrchardCircuitVersion;
     /// Builds ZSA-specific additional witnesses.
     fn build_additional_zsa_witnesses(
         psi_nf: pallas::Base,
@@ -157,6 +161,49 @@ pub(crate) fn unpack(
     zsa_values: Value<AdditionalZsaWitnesses>,
 ) -> (Value<pallas::Base>, Value<AssetBase>, Value<bool>) {
     (zsa_values.clone().map(|v| v.psi_nf), zsa_values.clone().map(|v| v.asset), zsa_values.map(|v| v.split_flag))
+}
+
+/// Implementation of [`OrchardCircuit`] for the vanilla Orchard protocol.
+#[cfg(feature = "zsa")]
+impl OrchardCircuit for crate::zsa::flavor::OrchardVanilla {
+    type Config = Config;
+
+    fn configure(meta: &mut plonk::ConstraintSystem<pallas::Base>) -> Self::Config {
+        // Delegate to the existing vanilla circuit configuration
+        <Circuit as plonk::Circuit<pallas::Base>>::configure(meta)
+    }
+
+    fn synthesize(
+        witnesses: &Witnesses,
+        config: Self::Config,
+        layouter: impl Layouter<pallas::Base>,
+    ) -> Result<(), plonk::Error> {
+        let circuit = Circuit::from_witnesses(witnesses, Self::circuit_version());
+        <Circuit as plonk::Circuit<pallas::Base>>::synthesize(&circuit, config, layouter)
+    }
+
+    fn proof_size(num_actions: usize) -> usize {
+        // Vanilla proof: 2720 + 2272 per action
+        const BASE: usize = 2720;
+        const PER_ACTION: usize = 2272;
+        BASE + PER_ACTION * num_actions
+    }
+
+    fn circuit_version() -> OrchardCircuitVersion {
+        OrchardCircuitVersion::FixedPostNu6_2
+    }
+
+    fn build_additional_zsa_witnesses(
+        psi_nf: pallas::Base,
+        _asset: AssetBase,
+        _split_flag: bool,
+    ) -> Value<AdditionalZsaWitnesses> {
+        Value::known(AdditionalZsaWitnesses {
+            psi_nf,
+            asset: AssetBase::zatoshi(),
+            split_flag: false,
+        })
+    }
 }
 
 /// Configuration needed to use the Orchard Action circuit.
@@ -382,6 +429,33 @@ impl Circuit {
             psi_new: Value::known(psi_new),
             rcm_new: Value::known(rcm_new),
             rcv: Value::known(rcv),
+            circuit_version,
+        }
+    }
+
+    /// Converts generic [`Witnesses`] into a vanilla [`Circuit`].
+    #[cfg(feature = "zsa")]
+    pub(crate) fn from_witnesses(w: &Witnesses, circuit_version: OrchardCircuitVersion) -> Self {
+        Circuit {
+            path: w.path.clone(),
+            pos: w.pos,
+            g_d_old: w.g_d_old,
+            pk_d_old: w.pk_d_old,
+            v_old: w.v_old,
+            rho_old: w.rho_old,
+            psi_old: w.psi_old,
+            rcm_old: w.rcm_old.clone(),
+            cm_old: w.cm_old.clone(),
+            alpha: w.alpha,
+            ak: w.ak.clone(),
+            nk: w.nk,
+            rivk: w.rivk,
+            g_d_new: w.g_d_new,
+            pk_d_new: w.pk_d_new,
+            v_new: w.v_new,
+            psi_new: w.psi_new,
+            rcm_new: w.rcm_new.clone(),
+            rcv: w.rcv.clone(),
             circuit_version,
         }
     }
@@ -1598,6 +1672,8 @@ mod tests {
                 enable_spend: true,
                 enable_output: true,
                 cross_address_disabled: false,
+                #[cfg(feature = "zsa")]
+                enable_zsa: false,
             },
         )
     }
