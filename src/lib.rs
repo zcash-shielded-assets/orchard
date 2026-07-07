@@ -25,6 +25,8 @@ extern crate std;
 
 use alloc::vec::Vec;
 
+pub(crate) mod shared;
+
 mod action;
 mod address;
 pub mod builder;
@@ -47,6 +49,21 @@ pub mod spec;
 pub mod tree;
 pub mod value;
 pub mod zip32;
+
+/// ZSA note encryption domain (84-byte compact notes).
+///
+/// This is an alpha feature. Can be deleted entirely without affecting
+/// the vanilla / Ironwood paths.
+#[cfg(feature = "zsa")]
+pub mod zsa;
+
+// Re-export ZSA types at the crate root for ergonomic access.
+#[cfg(feature = "zsa")]
+pub use zsa::flavor;
+#[cfg(feature = "zsa")]
+pub use zsa::issuance;
+
+pub mod sighash_kind;
 
 #[cfg(test)]
 mod test_vectors;

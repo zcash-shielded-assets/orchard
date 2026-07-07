@@ -11,6 +11,7 @@ use orchard::{
     bundle::BundleVersion,
     circuit::{OrchardCircuitVersion, ProvingKey, VerifyingKey},
     keys::{FullViewingKey, Scope, SpendingKey},
+    note::AssetBase,
     value::NoteValue,
     Anchor, Bundle,
 };
@@ -35,7 +36,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         .unwrap();
         for _ in 0..num_recipients {
             builder
-                .add_output(None, recipient, NoteValue::from_raw(10), [0; 512])
+                .add_output(None, recipient, NoteValue::from_raw(10), AssetBase::zatoshi(), [0; 512])
                 .unwrap();
         }
         let bundle: Bundle<_, i64> = builder.build(rng).unwrap().unwrap().0;

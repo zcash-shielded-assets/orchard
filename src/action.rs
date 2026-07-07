@@ -5,6 +5,7 @@ use group::{Group as _, GroupEncoding as _};
 use memuse::DynamicUsage;
 use pasta_curves::pallas;
 use subtle::CtOption;
+use zcash_note_encryption::Domain;
 
 use crate::{
     note::{ExtractedNoteCommitment, Nullifier, Rho, TransmittedNoteCiphertext},
@@ -17,12 +18,14 @@ use crate::{
 /// This both creates a note (adding a commitment to the global ledger), and consumes
 /// some note created prior to this action (adding a nullifier to the global ledger).
 ///
+/// `D` is the note encryption domain that determines ciphertext sizes.
+///
 /// # Invariants
 ///
 /// Every `Action` has a non-identity `rk`, and an `epk_bytes` that encodes a
 /// non-identity [`pasta_curves::pallas::Point`].
 #[derive(Debug, Clone)]
-pub struct Action<A> {
+pub struct Action<A, D: Domain = crate::note_encryption::OrchardDomain> {
     /// The nullifier of the note being spent.
     nf: Nullifier,
     /// The randomized verification key for the note being spent.
@@ -30,14 +33,14 @@ pub struct Action<A> {
     /// A commitment to the new note being created.
     cmx: ExtractedNoteCommitment,
     /// The transmitted note ciphertext.
-    encrypted_note: TransmittedNoteCiphertext,
+    encrypted_note: TransmittedNoteCiphertext<D>,
     /// A commitment to the net value created or consumed by this action.
     cv_net: ValueCommitment,
     /// The authorization for this action.
     authorization: A,
 }
 
-impl<T> Action<T> {
+impl<A, D: Domain> Action<A, D> {
     /// Constructs an `Action` from its constituent parts.
     ///
     /// Returns an [`ActionFromPartsError`] if `rk` is the identity
@@ -58,9 +61,9 @@ impl<T> Action<T> {
         nf: Nullifier,
         rk: redpallas::VerificationKey<SpendAuth>,
         cmx: ExtractedNoteCommitment,
-        encrypted_note: TransmittedNoteCiphertext,
+        encrypted_note: TransmittedNoteCiphertext<D>,
         cv_net: ValueCommitment,
-        authorization: T,
+        authorization: A,
     ) -> Result<Self, ActionFromPartsError> {
         if rk.is_identity() {
             return Err(ActionFromPartsError::IdentityRk);
@@ -98,7 +101,7 @@ impl<T> Action<T> {
     }
 
     /// Returns the encrypted note ciphertext.
-    pub fn encrypted_note(&self) -> &TransmittedNoteCiphertext {
+    pub fn encrypted_note(&self) -> &TransmittedNoteCiphertext<D> {
         &self.encrypted_note
     }
 
@@ -113,12 +116,12 @@ impl<T> Action<T> {
     }
 
     /// Returns the authorization for this action.
-    pub fn authorization(&self) -> &T {
+    pub fn authorization(&self) -> &A {
         &self.authorization
     }
 
     /// Transitions this action from one authorization state to another.
-    pub fn map<U>(self, step: impl FnOnce(T) -> U) -> Action<U> {
+    pub fn map<U>(self, step: impl FnOnce(A) -> U) -> Action<U, D> {
         Action {
             nf: self.nf,
             rk: self.rk,
@@ -129,8 +132,8 @@ impl<T> Action<T> {
         }
     }
 
-    /// Transitions this action from one authorization state to another.
-    pub fn try_map<U, E>(self, step: impl FnOnce(T) -> Result<U, E>) -> Result<Action<U>, E> {
+    /// Transitions this action from one authorization state to another, fallibly.
+    pub fn try_map<U, E>(self, step: impl FnOnce(A) -> Result<U, E>) -> Result<Action<U, D>, E> {
         Ok(Action {
             nf: self.nf,
             rk: self.rk,
@@ -171,7 +174,7 @@ impl fmt::Display for ActionFromPartsError {
 
 impl core::error::Error for ActionFromPartsError {}
 
-impl DynamicUsage for Action<redpallas::Signature<SpendAuth>> {
+impl<D: Domain> DynamicUsage for Action<redpallas::Signature<SpendAuth>, D> {
     #[inline(always)]
     fn dynamic_usage(&self) -> usize {
         0
@@ -203,7 +206,6 @@ pub(crate) mod testing {
         value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
         Note, NoteVersion,
     };
-
     use super::Action;
 
     /// Builds a real, decryptable `TransmittedNoteCiphertext` for `note`,
@@ -217,7 +219,7 @@ pub(crate) mod testing {
         cv_net: &ValueCommitment,
         cmx: &ExtractedNoteCommitment,
         mut rng: impl RngCore,
-    ) -> TransmittedNoteCiphertext {
+    ) -> TransmittedNoteCiphertext<OrchardDomain> {
         let encryptor = OrchardNoteEncryption::new(None, note, [0u8; 512]);
         TransmittedNoteCiphertext {
             epk_bytes: OrchardDomain::epk_bytes(encryptor.epk()).0,
@@ -294,9 +296,11 @@ mod tests {
     use super::{Action, ActionFromPartsError};
     use crate::{
         note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
+        note_encryption::OrchardDomain,
         primitives::redpallas::{self, SpendAuth},
         value::{ValueCommitTrapdoor, ValueCommitment, ValueSum},
     };
+    use zcash_note_encryption::note_bytes::NoteBytesData;
 
     /// The canonical Pallas encoding of the identity is [0u8; 32]; plain
     /// redpallas accepts it as a `VerificationKey<SpendAuth>`.
@@ -327,14 +331,14 @@ mod tests {
     fn dummy_other_fields() -> (
         Nullifier,
         ExtractedNoteCommitment,
-        TransmittedNoteCiphertext,
+        TransmittedNoteCiphertext<OrchardDomain>,
         ValueCommitment,
     ) {
         let nf = Nullifier::from_bytes(&[1u8; 32]).unwrap();
         let cmx = ExtractedNoteCommitment::from_bytes(&[2u8; 32]).unwrap();
-        let encrypted_note = TransmittedNoteCiphertext {
+        let encrypted_note = TransmittedNoteCiphertext::<OrchardDomain> {
             epk_bytes: pallas::Point::generator().to_bytes(),
-            enc_ciphertext: [4u8; 580],
+            enc_ciphertext: NoteBytesData([4u8; 580]),
             out_ciphertext: [5u8; 80],
         };
         let cv_net = ValueCommitment::derive(ValueSum::from_raw(42), ValueCommitTrapdoor::zero());

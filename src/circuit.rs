@@ -43,6 +43,8 @@ use crate::{
     tree::{Anchor, MerkleHashOrchard},
     value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
 };
+#[cfg(feature = "zsa")]
+use crate::note::AssetBase;
 use halo2_gadgets::{
     ecc::{
         chip::{EccChip, EccConfig},
@@ -61,14 +63,19 @@ use halo2_gadgets::{
 };
 
 #[cfg(not(feature = "unstable-voting-circuits"))]
-mod commit_ivk;
+pub(crate) mod commit_ivk;
 #[cfg(feature = "unstable-voting-circuits")]
 pub mod commit_ivk;
 pub mod gadget;
 #[cfg(not(feature = "unstable-voting-circuits"))]
-mod note_commit;
+pub(crate) mod note_commit;
 #[cfg(feature = "unstable-voting-circuits")]
 pub mod note_commit;
+
+#[cfg(feature = "zsa-circuit")]
+pub(crate) mod derive_nullifier;
+#[cfg(feature = "zsa-circuit")]
+pub(crate) mod value_commit_orchard;
 
 pub use crate::Proof;
 
@@ -86,25 +93,189 @@ const CMX: usize = 6;
 const ENABLE_SPEND: usize = 7;
 const ENABLE_OUTPUT: usize = 8;
 const DISABLE_CROSS_ADDRESS: usize = 9;
+#[cfg(feature = "zsa")]
+pub(crate) const ENABLE_ZSA: usize = 9; // ZSA circuit reuses index 9 with different semantics
+
+/// Trait for Orchard protocol flavors (vanilla and ZSA) that implements circuit behavior.
+#[cfg(feature = "zsa")]
+pub trait OrchardCircuit: Sized + Default {
+    /// The circuit configuration type.
+    type Config: Clone;
+    /// Configures the circuit.
+    fn configure(meta: &mut plonk::ConstraintSystem<pallas::Base>) -> Self::Config;
+    /// Synthesizes the circuit from witnesses.
+    fn synthesize(
+        circuit: &Witnesses,
+        config: Self::Config,
+        layouter: impl Layouter<pallas::Base>,
+    ) -> Result<(), plonk::Error>;
+    /// The canonical proof size for `num_actions` actions.
+    fn proof_size(num_actions: usize) -> usize;
+    /// The circuit version this flavor targets.
+    fn circuit_version() -> OrchardCircuitVersion;
+    /// Builds ZSA-specific additional witnesses.
+    fn build_additional_zsa_witnesses(
+        psi_nf: pallas::Base,
+        asset: AssetBase,
+        split_flag: bool,
+    ) -> Value<AdditionalZsaWitnesses>;
+}
+
+/// ZSA-specific witnesses for the action circuit.
+#[cfg(feature = "zsa")]
+#[derive(Clone, Debug)]
+pub struct AdditionalZsaWitnesses {
+    pub(crate) psi_nf: pallas::Base,
+    pub(crate) asset: AssetBase,
+    pub(crate) split_flag: bool,
+}
+
+/// Witnesses for the Orchard action circuit.
+#[derive(Clone, Debug, Default)]
+pub struct Witnesses {
+    pub(crate) path: Value<[MerkleHashOrchard; MERKLE_DEPTH_ORCHARD]>,
+    pub(crate) pos: Value<u32>,
+    pub(crate) g_d_old: Value<NonIdentityPallasPoint>,
+    pub(crate) pk_d_old: Value<DiversifiedTransmissionKey>,
+    pub(crate) v_old: Value<NoteValue>,
+    pub(crate) rho_old: Value<Rho>,
+    pub(crate) psi_old: Value<pallas::Base>,
+    pub(crate) rcm_old: Value<NoteCommitTrapdoor>,
+    pub(crate) cm_old: Value<NoteCommitment>,
+    pub(crate) alpha: Value<pallas::Scalar>,
+    pub(crate) ak: Value<SpendValidatingKey>,
+    pub(crate) nk: Value<NullifierDerivingKey>,
+    pub(crate) rivk: Value<CommitIvkRandomness>,
+    pub(crate) g_d_new: Value<NonIdentityPallasPoint>,
+    pub(crate) pk_d_new: Value<DiversifiedTransmissionKey>,
+    pub(crate) v_new: Value<NoteValue>,
+    pub(crate) psi_new: Value<pallas::Base>,
+    pub(crate) rcm_new: Value<NoteCommitTrapdoor>,
+    pub(crate) rcv: Value<ValueCommitTrapdoor>,
+    #[cfg(feature = "zsa")]
+    pub(crate) additional_zsa_witnesses: Value<AdditionalZsaWitnesses>,
+}
+
+/// Unpacks additional ZSA witnesses into separate values.
+#[cfg(feature = "zsa")]
+pub(crate) fn unpack(
+    zsa_values: Value<AdditionalZsaWitnesses>,
+) -> (Value<pallas::Base>, Value<AssetBase>, Value<bool>) {
+    (zsa_values.clone().map(|v| v.psi_nf), zsa_values.clone().map(|v| v.asset), zsa_values.map(|v| v.split_flag))
+}
+
+/// Implementation of [`OrchardCircuit`] for the vanilla Orchard protocol.
+#[cfg(feature = "zsa")]
+impl OrchardCircuit for crate::zsa::flavor::OrchardVanilla {
+    type Config = Config;
+
+    fn configure(meta: &mut plonk::ConstraintSystem<pallas::Base>) -> Self::Config {
+        // Delegate to the existing vanilla circuit configuration
+        <Circuit as plonk::Circuit<pallas::Base>>::configure(meta)
+    }
+
+    fn synthesize(
+        witnesses: &Witnesses,
+        config: Self::Config,
+        layouter: impl Layouter<pallas::Base>,
+    ) -> Result<(), plonk::Error> {
+        let circuit = Circuit::from_witnesses(witnesses, Self::circuit_version());
+        <Circuit as plonk::Circuit<pallas::Base>>::synthesize(&circuit, config, layouter)
+    }
+
+    fn proof_size(num_actions: usize) -> usize {
+        // Vanilla proof: 2720 + 2272 per action
+        const BASE: usize = 2720;
+        const PER_ACTION: usize = 2272;
+        BASE + PER_ACTION * num_actions
+    }
+
+    fn circuit_version() -> OrchardCircuitVersion {
+        OrchardCircuitVersion::FixedPostNu6_2
+    }
+
+    fn build_additional_zsa_witnesses(
+        psi_nf: pallas::Base,
+        _asset: AssetBase,
+        _split_flag: bool,
+    ) -> Value<AdditionalZsaWitnesses> {
+        Value::known(AdditionalZsaWitnesses {
+            psi_nf,
+            asset: AssetBase::zatoshi(),
+            split_flag: false,
+        })
+    }
+}
 
 /// Configuration needed to use the Orchard Action circuit.
 #[derive(Clone, Debug)]
 pub struct Config {
-    primary: Column<InstanceColumn>,
-    q_orchard: Selector,
-    advices: [Column<Advice>; 10],
-    add_config: AddConfig,
-    ecc_config: EccConfig<OrchardFixedBases>,
-    poseidon_config: PoseidonConfig<pallas::Base, 3, 2>,
-    merkle_config_1: MerkleConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
-    merkle_config_2: MerkleConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
-    sinsemilla_config_1:
+    pub(crate) primary: Column<InstanceColumn>,
+    pub(crate) q_orchard: Selector,
+    pub(crate) advices: [Column<Advice>; 10],
+    pub(crate) add_config: AddConfig,
+    pub(crate) ecc_config: EccConfig<OrchardFixedBases>,
+    pub(crate) poseidon_config: PoseidonConfig<pallas::Base, 3, 2>,
+    pub(crate) merkle_config_1:
+        MerkleConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+    pub(crate) merkle_config_2:
+        MerkleConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+    pub(crate) sinsemilla_config_1:
         SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
-    sinsemilla_config_2:
+    pub(crate) sinsemilla_config_2:
         SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
-    commit_ivk_config: CommitIvkConfig,
-    old_note_commit_config: NoteCommitConfig,
-    new_note_commit_config: NoteCommitConfig,
+    pub(crate) commit_ivk_config: CommitIvkConfig,
+    pub(crate) old_note_commit_config: NoteCommitConfig,
+    pub(crate) new_note_commit_config: NoteCommitConfig,
+}
+
+// Chip constructors for zsa-circuit.
+#[cfg(feature = "zsa-circuit")]
+impl Config {
+    pub(crate) fn zsa_ecc_chip(
+        &self,
+        version: halo2_gadgets::ecc::chip::CircuitVersion,
+    ) -> EccChip<OrchardFixedBases> {
+        EccChip::construct(self.ecc_config.clone(), version)
+    }
+    pub(crate) fn zsa_poseidon_chip(&self) -> PoseidonChip<pallas::Base, 3, 2> {
+        PoseidonChip::construct(self.poseidon_config.clone())
+    }
+    pub(crate) fn zsa_sinsemilla_chip_1(
+        &self,
+    ) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> {
+        SinsemillaChip::construct(self.sinsemilla_config_1.clone())
+    }
+    pub(crate) fn zsa_sinsemilla_chip_2(
+        &self,
+    ) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> {
+        SinsemillaChip::construct(self.sinsemilla_config_2.clone())
+    }
+    pub(crate) fn zsa_merkle_chip_1(
+        &self,
+    ) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> {
+        MerkleChip::construct(self.merkle_config_1.clone())
+    }
+    pub(crate) fn zsa_merkle_chip_2(
+        &self,
+    ) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> {
+        MerkleChip::construct(self.merkle_config_2.clone())
+    }
+    pub(crate) fn zsa_commit_ivk_chip(&self) -> CommitIvkChip {
+        CommitIvkChip::construct(self.commit_ivk_config.clone())
+    }
+    pub(crate) fn zsa_note_commit_chip_old(&self) -> NoteCommitChip {
+        NoteCommitChip::construct(self.old_note_commit_config.clone())
+    }
+    pub(crate) fn zsa_note_commit_chip_new(&self) -> NoteCommitChip {
+        NoteCommitChip::construct(self.new_note_commit_config.clone())
+    }
+    pub(crate) fn zsa_add_chip(&self) -> AddChip {
+        AddChip::construct(self.add_config.clone())
+    }
+    pub(crate) fn zsa_note_commit_chip_old_backup(&self) -> NoteCommitChip {
+        NoteCommitChip::construct(self.old_note_commit_config.clone())
+    }
 }
 
 /// Selects which version of the Orchard Action circuit to build.
@@ -128,6 +299,7 @@ pub struct Config {
 /// [`FixedPostNu6_2`]: OrchardCircuitVersion::FixedPostNu6_2
 /// [`InsecurePreNu6_2`]: OrchardCircuitVersion::InsecurePreNu6_2
 /// [`PostNu6_3`]: OrchardCircuitVersion::PostNu6_3
+/// [`ZsaFixed`]: OrchardCircuitVersion::ZsaFixed
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OrchardCircuitVersion {
     /// The insecure pre-NU6.2 circuit, in which the variable-base scalar-multiplication base
@@ -140,6 +312,9 @@ pub enum OrchardCircuitVersion {
     /// The post-NU 6.3 circuit. This uses the fixed circuit with additional constraints
     /// enforcing the `disableCrossAddress` public input.
     PostNu6_3,
+    /// The ZSA (Zcash Shielded Assets) circuit. This uses the fixed circuit with additional
+    /// ZSA constraints per ZIP-226: split flag, asset base checks, and ZSA note commitments.
+    ZsaFixed,
 }
 
 impl OrchardCircuitVersion {
@@ -153,7 +328,9 @@ impl OrchardCircuitVersion {
     /// [`PostNu6_3`]: OrchardCircuitVersion::PostNu6_3
     pub fn supports_cross_address_restriction(self) -> bool {
         match self {
-            OrchardCircuitVersion::InsecurePreNu6_2 | OrchardCircuitVersion::FixedPostNu6_2 => {
+            OrchardCircuitVersion::InsecurePreNu6_2
+            | OrchardCircuitVersion::FixedPostNu6_2
+            | OrchardCircuitVersion::ZsaFixed => {
                 false
             }
             OrchardCircuitVersion::PostNu6_3 => true,
@@ -164,7 +341,9 @@ impl OrchardCircuitVersion {
     fn halo2_version(self) -> CircuitVersion {
         match self {
             OrchardCircuitVersion::InsecurePreNu6_2 => CircuitVersion::InsecureUnanchoredBase,
-            OrchardCircuitVersion::FixedPostNu6_2 | OrchardCircuitVersion::PostNu6_3 => {
+            OrchardCircuitVersion::FixedPostNu6_2
+            | OrchardCircuitVersion::PostNu6_3
+            | OrchardCircuitVersion::ZsaFixed => {
                 CircuitVersion::AnchoredBase
             }
         }
@@ -292,6 +471,33 @@ impl Circuit {
             psi_new: Value::known(psi_new),
             rcm_new: Value::known(rcm_new),
             rcv: Value::known(rcv),
+            circuit_version,
+        }
+    }
+
+    /// Converts generic [`Witnesses`] into a vanilla [`Circuit`].
+    #[cfg(feature = "zsa")]
+    pub(crate) fn from_witnesses(w: &Witnesses, circuit_version: OrchardCircuitVersion) -> Self {
+        Circuit {
+            path: w.path.clone(),
+            pos: w.pos,
+            g_d_old: w.g_d_old,
+            pk_d_old: w.pk_d_old,
+            v_old: w.v_old,
+            rho_old: w.rho_old,
+            psi_old: w.psi_old,
+            rcm_old: w.rcm_old.clone(),
+            cm_old: w.cm_old.clone(),
+            alpha: w.alpha,
+            ak: w.ak.clone(),
+            nk: w.nk,
+            rivk: w.rivk,
+            g_d_new: w.g_d_new,
+            pk_d_new: w.pk_d_new,
+            v_new: w.v_new,
+            psi_new: w.psi_new,
+            rcm_new: w.rcm_new.clone(),
+            rcv: w.rcv.clone(),
             circuit_version,
         }
     }
@@ -1159,6 +1365,11 @@ pub struct Instance {
     enable_spend: bool,
     enable_output: bool,
     cross_address_disabled: bool,
+    /// ZSA circuit: whether ZSA custom asset logic is active.
+    /// Shares circuit index 9 with `cross_address_disabled` — only
+    /// one circuit flavor is active per proof, so no conflict.
+    #[cfg(feature = "zsa")]
+    pub(crate) enable_zsa: bool,
 }
 
 impl Instance {
@@ -1203,6 +1414,8 @@ impl Instance {
             enable_spend: flags.spends_enabled(),
             enable_output: flags.outputs_enabled(),
             cross_address_disabled: !flags.cross_address_enabled(),
+            #[cfg(feature = "zsa")]
+            enable_zsa: false,
         })
     }
 
@@ -1501,6 +1714,8 @@ mod tests {
                 enable_spend: true,
                 enable_output: true,
                 cross_address_disabled: false,
+                #[cfg(feature = "zsa")]
+                enable_zsa: false,
             },
         )
     }

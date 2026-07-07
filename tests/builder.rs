@@ -6,7 +6,7 @@ use orchard::{
     bundle::{Authorized, BatchValidator, BundleVersion, Flags, TxVersion},
     circuit::{OrchardCircuitVersion, ProvingKey, VerifyingKey},
     keys::{FullViewingKey, PreparedIncomingViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
-    note::{ExtractedNoteCommitment, NoteVersion},
+    note::{AssetBase, ExtractedNoteCommitment, NoteVersion},
     note_encryption::{IronwoodDomain, OrchardDomain},
     tree::{MerkleHashOrchard, MerklePath},
     value::NoteValue,
@@ -73,7 +73,7 @@ fn output_only_builder(
     let mut builder = Builder::new(bundle_type, bundle_version, SHIELDING_FLAGS, anchor)
         .expect("shielding flags are valid for the bundle version");
     assert_eq!(
-        builder.add_output(None, recipient, NoteValue::from_raw(5000), [0u8; 512]),
+        builder.add_output(None, recipient, NoteValue::from_raw(5000), AssetBase::zatoshi(), [0u8; 512]),
         Ok(())
     );
     builder
@@ -143,7 +143,7 @@ fn bundle_chain() {
         .unwrap();
         assert_eq!(builder.add_spend(fvk, note, merkle_path), Ok(()));
         assert_eq!(
-            builder.add_output(None, recipient, NoteValue::from_raw(5000), [0u8; 512]),
+            builder.add_output(None, recipient, NoteValue::from_raw(5000), AssetBase::zatoshi(), [0u8; 512]),
             Ok(())
         );
         let (unauthorized, _) = builder.build(&mut rng).unwrap().unwrap();
@@ -266,6 +266,7 @@ fn ironwood_bundle_helpers_decrypt_and_recover_outputs() {
             Some(ovk.clone()),
             recipient,
             NoteValue::from_raw(5000),
+            AssetBase::zatoshi(),
             [0u8; 512],
         ),
         Ok(())
@@ -403,6 +404,7 @@ fn post_nu6_3_restricted_bundle_chain() {
                 Some(fvk.to_ovk(Scope::Internal)),
                 change_addr,
                 NoteValue::from_raw(3000),
+                AssetBase::zatoshi(),
                 [0u8; 512],
             ),
             Ok(())
@@ -534,7 +536,7 @@ fn ironwood_post_nu6_3_unrestricted_bundle_proves_and_verifies() {
     .unwrap();
     assert_eq!(builder.add_spend(fvk.clone(), note, merkle_path), Ok(()));
     assert_eq!(
-        builder.add_output(None, change_addr, NoteValue::from_raw(5000), [0u8; 512]),
+        builder.add_output(None, change_addr, NoteValue::from_raw(5000), AssetBase::zatoshi(), [0u8; 512]),
         Ok(())
     );
     let (unauthorized, _) = builder.build(&mut rng).unwrap().unwrap();

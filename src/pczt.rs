@@ -10,10 +10,12 @@ use pasta_curves::pallas;
 use zcash_note_encryption::OutgoingCipherKey;
 use zip32::ChildIndex;
 
+use zcash_note_encryption::Domain;
 use crate::{
     bundle::{BundleVersion, Flags},
     keys::{FullViewingKey, SpendingKey},
-    note::{ExtractedNoteCommitment, Nullifier, RandomSeed, Rho, TransmittedNoteCiphertext},
+    note::{AssetBase, ExtractedNoteCommitment, Nullifier, RandomSeed, Rho, TransmittedNoteCiphertext},
+    note_encryption::OrchardDomain,
     primitives::redpallas::{self, Binding, SpendAuth},
     tree::MerklePath,
     value::{NoteValue, ValueCommitTrapdoor, ValueCommitment, ValueSum},
@@ -51,12 +53,12 @@ pub use tx_extractor::{TxExtractorError, Unbound};
 /// [the regular `Bundle` struct]: crate::Bundle
 #[derive(Debug, Getters)]
 #[getset(get = "pub")]
-pub struct Bundle {
+pub struct Bundle<D: Domain = OrchardDomain> {
     /// The Orchard actions in this bundle.
     ///
     /// Entries are added by the Constructor, and modified by an Updater, IO Finalizer,
     /// Signer, Combiner, or Spend Finalizer.
-    pub(crate) actions: Vec<Action>,
+    pub(crate) actions: Vec<Action<D>>,
 
     /// The flags for the Orchard bundle.
     ///
@@ -95,14 +97,14 @@ pub struct Bundle {
     pub(crate) bsk: Option<redpallas::SigningKey<Binding>>,
 }
 
-impl Bundle {
+impl<D: Domain> Bundle<D> {
     /// Returns a mutable reference to the actions in this bundle.
     ///
     /// This is used by Signers to apply signatures with [`Action::sign`].
     ///
     /// Note: updating the `Action`s via the returned slice will not update other
     /// fields of the bundle dependent on them, such as `value_sum` and `bsk`.
-    pub fn actions_mut(&mut self) -> &mut [Action] {
+    pub fn actions_mut(&mut self) -> &mut [Action<D>] {
         &mut self.actions
     }
 
@@ -122,10 +124,13 @@ impl Bundle {
 /// This struct is for representing Orchard actions in a partially-created transaction.
 /// If you have a fully-created transaction, use [the regular `Action` struct].
 ///
+/// `D` is the note encryption domain (vanilla [`OrchardDomain`] or ZSA [`OrchardZSADomain`]).
+///
 /// [the regular `Action` struct]: crate::Action
+/// [`OrchardZSADomain`]: crate::zsa::domain::OrchardZSADomain
 #[derive(Debug, Getters)]
 #[getset(get = "pub")]
-pub struct Action {
+pub struct Action<D: Domain = OrchardDomain> {
     /// A commitment to the net value created or consumed by this action.
     pub(crate) cv_net: ValueCommitment,
 
@@ -133,7 +138,7 @@ pub struct Action {
     pub(crate) spend: Spend,
 
     /// The output half of this action.
-    pub(crate) output: Output,
+    pub(crate) output: Output<D>,
 
     /// The value commitment randomness.
     ///
@@ -237,7 +242,7 @@ pub struct Spend {
 /// Information about an Orchard output within a transaction.
 #[derive(Getters)]
 #[getset(get = "pub")]
-pub struct Output {
+pub struct Output<D: Domain = OrchardDomain> {
     /// A commitment to the new note being created.
     pub(crate) cmx: ExtractedNoteCommitment,
 
@@ -253,7 +258,7 @@ pub struct Output {
     /// - `ephemeral_key`
     /// - `enc_ciphertext`
     /// - `out_ciphertext`
-    pub(crate) encrypted_note: TransmittedNoteCiphertext,
+    pub(crate) encrypted_note: TransmittedNoteCiphertext<D>,
 
     /// The address that will receive the output.
     ///
@@ -308,7 +313,23 @@ pub struct Output {
     pub(crate) proprietary: BTreeMap<String, Vec<u8>>,
 }
 
-impl fmt::Debug for Output {
+impl Spend {
+    /// Returns the asset base of the note being spent.
+    /// TODO: return actual asset from the spend note information.
+    pub fn asset(&self) -> AssetBase {
+        AssetBase::zatoshi()
+    }
+}
+
+impl<D: Domain> Output<D> {
+    /// Returns the asset base of the output note.
+    /// TODO: return actual asset from the output note information.
+    pub fn asset(&self) -> AssetBase {
+        AssetBase::zatoshi()
+    }
+}
+
+impl<D: Domain> fmt::Debug for Output<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Output")
             .field("cmx", &self.cmx)
@@ -378,7 +399,7 @@ mod tests {
         circuit::{OrchardCircuitVersion, ProvingKey, VerifyingKey},
         constants::MERKLE_DEPTH_ORCHARD,
         keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
-        note::{ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
+        note::{AssetBase, ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
         pczt::{
             IoFinalizerError, ParseError, ProverError, SignerError, TxExtractorError, VerifyError,
             Zip32Derivation,
@@ -437,6 +458,7 @@ mod tests {
                 None,
                 change_recipient,
                 NoteValue::from_raw(5_000),
+                AssetBase::zatoshi(),
                 [0u8; 512],
             )
             .unwrap();
@@ -464,7 +486,7 @@ mod tests {
         )
         .unwrap();
         builder
-            .add_output(None, recipient, NoteValue::from_raw(5000), [0u8; 512])
+            .add_output(None, recipient, NoteValue::from_raw(5000), AssetBase::zatoshi(), [0u8; 512])
             .unwrap();
         let mut pczt_bundle = builder.build_for_pczt(&mut rng).unwrap().0;
 
@@ -485,7 +507,7 @@ mod tests {
         )
         .unwrap();
         builder
-            .add_output(None, recipient, NoteValue::from_raw(5000), [0u8; 512])
+            .add_output(None, recipient, NoteValue::from_raw(5000), AssetBase::zatoshi(), [0u8; 512])
             .unwrap();
         builder.build_for_pczt(&mut rng).unwrap().0
     }
@@ -514,7 +536,7 @@ mod tests {
         )
         .unwrap();
         builder
-            .add_output(None, recipient, NoteValue::from_raw(5000), [0u8; 512])
+            .add_output(None, recipient, NoteValue::from_raw(5000), AssetBase::zatoshi(), [0u8; 512])
             .unwrap();
         let balance: i64 = builder.value_balance().unwrap();
         assert_eq!(balance, -5000);
@@ -575,7 +597,7 @@ mod tests {
         )
         .unwrap();
         builder
-            .add_output(None, recipient, NoteValue::from_raw(5000), [0u8; 512])
+            .add_output(None, recipient, NoteValue::from_raw(5000), AssetBase::zatoshi(), [0u8; 512])
             .unwrap();
         let (mut pczt_bundle, bundle_meta) = builder.build_for_pczt(&mut rng).unwrap();
         let output_action_index = bundle_meta.output_action_index(0).unwrap();
@@ -627,6 +649,7 @@ mod tests {
                 if let Some(note) = Note::from_parts(
                     recipient,
                     value,
+                    AssetBase::zatoshi(),
                     rho,
                     RandomSeed::random(&mut rng, &rho),
                     NoteVersion::V3,
@@ -673,7 +696,7 @@ mod tests {
             .add_spend(fvk.clone(), note, merkle_path.into())
             .unwrap();
         builder
-            .add_output(None, recipient, NoteValue::from_raw(10_000), [0u8; 512])
+            .add_output(None, recipient, NoteValue::from_raw(10_000), AssetBase::zatoshi(), [0u8; 512])
             .unwrap();
         let (mut pczt_bundle, bundle_meta) = builder.build_for_pczt(&mut rng).unwrap();
         let spend_action_index = bundle_meta.spend_action_index(0).unwrap();
@@ -725,6 +748,7 @@ mod tests {
                 if let Some(note) = Note::from_parts(
                     recipient,
                     value,
+                    AssetBase::zatoshi(),
                     rho,
                     RandomSeed::random(&mut rng, &rho),
                     bundle_version.note_version(),
@@ -773,13 +797,14 @@ mod tests {
             .add_spend(fvk.clone(), note, merkle_path.into())
             .unwrap();
         builder
-            .add_output(None, recipient, NoteValue::from_raw(10_000), [0u8; 512])
+            .add_output(None, recipient, NoteValue::from_raw(10_000), AssetBase::zatoshi(), [0u8; 512])
             .unwrap();
         builder
             .add_output(
                 Some(fvk.to_ovk(Scope::Internal)),
                 fvk.address_at(0u32, Scope::Internal),
                 NoteValue::from_raw(5_000),
+                AssetBase::zatoshi(),
                 [0u8; 512],
             )
             .unwrap();

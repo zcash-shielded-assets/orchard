@@ -58,6 +58,10 @@ impl super::Bundle {
         // transition in `apply_binding_signature`. Circuit-key support for bundle
         // flags is checked when proving or verifying.
         if let Some(bundle) = &bundle {
+            tracing::info!(
+                actions = bundle.actions().len(),
+                "PCZT bundle extracted"
+            );
             crate::bundle::validate_proof_size(
                 &bundle.authorization().proof,
                 bundle.actions().len(),
