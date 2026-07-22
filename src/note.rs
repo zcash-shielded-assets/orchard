@@ -45,6 +45,11 @@ pub enum NoteVersion {
     ///
     /// [ZIP 2005]: https://zips.z.cash/zip-2005
     V3,
+    /// ZSA (Zcash Shielded Assets) note plaintext version. Uses lead byte
+    /// `0x03` (same as V3) but an 84-byte compact plaintext with a 32-byte
+    /// asset field. Uses `rcm_v2()` (same as V2) — ZSA does not use the
+    /// Ironwood `rcm_v3` formula.
+    V3ZSA,
 }
 
 impl NoteVersion {
@@ -52,12 +57,17 @@ impl NoteVersion {
     pub(crate) const fn lead_byte(self) -> u8 {
         match self {
             Self::V2 => 0x02,
-            Self::V3 => 0x03,
+            Self::V3 | Self::V3ZSA => 0x03,
         }
     }
 
     /// Parses a note plaintext lead byte into the corresponding version,
     /// returning `None` if the byte is not a recognized version.
+    ///
+    /// Note: `0x03` maps to [`V3`] (Ironwood). [`V3ZSA`] cannot be
+    /// distinguished from `V3` by lead byte alone — ZSA-specific callers
+    /// should use `V3ZSA` directly based on context (ciphertext length,
+    /// consensus branch ID, etc.).
     pub(crate) fn from_lead_byte(b: u8) -> Option<Self> {
         match b {
             0x02 => Some(Self::V2),
@@ -492,7 +502,7 @@ impl Note {
         let rho = self.rho();
 
         match self.version {
-            NoteVersion::V2 => self.rseed.rcm_v2(&rho),
+            NoteVersion::V2 | NoteVersion::V3ZSA => self.rseed.rcm_v2(&rho),
             NoteVersion::V3 => {
                 let g_d = self.recipient.g_d();
                 let pk_d = self.recipient.pk_d().inner();

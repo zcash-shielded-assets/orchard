@@ -91,7 +91,7 @@ where
     let pk_d = get_validated_pk_d(&diversifier)?;
     let recipient = Address::from_parts(diversifier, pk_d);
 
-    let note = Note::from_parts(recipient, value, asset, rho, rseed, NoteVersion::V3).into_option()?;
+    let note = Note::from_parts(recipient, value, asset, rho, rseed, NoteVersion::V3ZSA).into_option()?;
 
     Some((note, recipient))
 }
