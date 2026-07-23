@@ -17,7 +17,6 @@ pub mod issuance;
 pub mod burn;
 #[cfg(feature = "zsa")]
 pub mod commitments;
-#[cfg(feature = "zsa-circuit")]
 pub mod circuit;
 pub(crate) mod reference_keys;
 #[cfg(feature = "zsa")]

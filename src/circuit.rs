@@ -83,15 +83,15 @@ pub use crate::Proof;
 const K: u32 = 11;
 
 // Absolute offsets for public inputs.
-const ANCHOR: usize = 0;
-const CV_NET_X: usize = 1;
-const CV_NET_Y: usize = 2;
-const NF_OLD: usize = 3;
-const RK_X: usize = 4;
-const RK_Y: usize = 5;
-const CMX: usize = 6;
-const ENABLE_SPEND: usize = 7;
-const ENABLE_OUTPUT: usize = 8;
+pub(crate) const ANCHOR: usize = 0;
+pub(crate) const CV_NET_X: usize = 1;
+pub(crate) const CV_NET_Y: usize = 2;
+pub(crate) const NF_OLD: usize = 3;
+pub(crate) const RK_X: usize = 4;
+pub(crate) const RK_Y: usize = 5;
+pub(crate) const CMX: usize = 6;
+pub(crate) const ENABLE_SPEND: usize = 7;
+pub(crate) const ENABLE_OUTPUT: usize = 8;
 const DISABLE_CROSS_ADDRESS: usize = 9;
 #[cfg(feature = "zsa")]
 pub(crate) const ENABLE_ZSA: usize = 9; // ZSA circuit reuses index 9 with different semantics
@@ -1308,6 +1308,18 @@ impl VerifyingKey {
     pub fn supports_cross_address_restriction(&self) -> bool {
         self.circuit_version.supports_cross_address_restriction()
     }
+
+    /// Builds a verifying key for the ZSA circuit ([`ZsaCircuit`]).
+    pub fn build_zsa() -> Self {
+        let params = halo2_proofs::poly::commitment::Params::new(K);
+        let circuit = crate::zsa::circuit::ZsaCircuit::default();
+        let vk = plonk::keygen_vk(&params, &circuit).unwrap();
+        VerifyingKey {
+            params,
+            vk,
+            circuit_version: OrchardCircuitVersion::ZsaFixed,
+        }
+    }
 }
 
 /// The proving key for the Orchard Action circuit.
@@ -1347,6 +1359,20 @@ impl ProvingKey {
     /// Returns whether this proving key supports the cross-address restriction.
     pub fn supports_cross_address_restriction(&self) -> bool {
         self.circuit_version.supports_cross_address_restriction()
+    }
+
+    /// Builds a proving key for the ZSA circuit ([`ZsaCircuit`]).
+    #[cfg(feature = "zsa-circuit")]
+    pub fn build_zsa() -> Self {
+        let params = halo2_proofs::poly::commitment::Params::new(K);
+        let circuit = crate::zsa::circuit::ZsaCircuit::default();
+        let vk = plonk::keygen_vk(&params, &circuit).unwrap();
+        let pk = plonk::keygen_pk(&params, vk, &circuit).unwrap();
+        ProvingKey {
+            params,
+            pk,
+            circuit_version: OrchardCircuitVersion::ZsaFixed,
+        }
     }
 }
 
@@ -1517,6 +1543,39 @@ impl Proof {
         {
             return Err(plonk::Error::Synthesis);
         }
+        if instances.iter().any(Instance::cross_address_disabled)
+            && !pk.supports_cross_address_restriction()
+        {
+            return Err(plonk::Error::InvalidInstances);
+        }
+
+        let instances: Vec<_> = instances.iter().map(|i| i.to_halo2_instance()).collect();
+        let instances: Vec<Vec<_>> = instances
+            .iter()
+            .map(|i| i.iter().map(|c| &c[..]).collect())
+            .collect();
+        let instances: Vec<_> = instances.iter().map(|i| &i[..]).collect();
+
+        let mut transcript = Blake2bWrite::<_, vesta::Affine, _>::init(vec![]);
+        plonk::create_proof(
+            &pk.params,
+            &pk.pk,
+            circuits,
+            &instances,
+            &mut rng,
+            &mut transcript,
+        )?;
+        Ok(Proof(transcript.finalize()))
+    }
+
+    /// Creates a proof for the given ZSA circuits.
+    #[cfg(feature = "zsa-circuit")]
+    pub fn create_zsa(
+        pk: &ProvingKey,
+        circuits: &[crate::zsa::circuit::ZsaCircuit],
+        instances: &[Instance],
+        mut rng: impl RngCore,
+    ) -> Result<Self, plonk::Error> {
         if instances.iter().any(Instance::cross_address_disabled)
             && !pk.supports_cross_address_restriction()
         {

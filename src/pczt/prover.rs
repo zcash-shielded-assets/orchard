@@ -7,7 +7,7 @@ use rand::{CryptoRng, RngCore};
 
 use crate::{
     builder::SpendInfo,
-    circuit::{Circuit, Instance, ProvingKey},
+    circuit::{Circuit, Instance, OrchardCircuitVersion, ProvingKey},
     note::{AssetBase, Rho},
     Note, Proof,
 };
@@ -136,8 +136,46 @@ impl super::Bundle {
             })
             .collect::<Result<Vec<_>, ProverError>>()?;
 
-        let proof =
-            Proof::create(pk, &circuits, &instances, rng).map_err(ProverError::ProofFailed)?;
+        let proof = if pk.circuit_version() == OrchardCircuitVersion::ZsaFixed {
+            let zsa_circuits: Vec<crate::zsa::circuit::ZsaCircuit> = self
+                .actions
+                .iter()
+                .map(|action| {
+                    let fvk = action.spend.fvk.clone()
+                        .ok_or(ProverError::MissingFullViewingKey)?;
+                    let note = Note::from_parts(
+                        action.spend.recipient.ok_or(ProverError::MissingRecipient)?,
+                        action.spend.value.ok_or(ProverError::MissingValue)?,
+                        AssetBase::zatoshi(),
+                        action.spend.rho.ok_or(ProverError::MissingRho)?,
+                        action.spend.rseed.ok_or(ProverError::MissingRandomSeed)?,
+                        action.spend.note_version,
+                    ).into_option().ok_or(ProverError::InvalidSpendNote)?;
+                    let merkle_path = action.spend.witness.clone()
+                        .ok_or(ProverError::MissingWitness)?;
+                    let spend = SpendInfo::new(fvk, note, merkle_path)
+                        .ok_or(ProverError::WrongFvkForNote)?;
+                    let output_note = Note::from_parts(
+                        action.output.recipient.ok_or(ProverError::MissingRecipient)?,
+                        action.output.value.ok_or(ProverError::MissingValue)?,
+                        AssetBase::zatoshi(),
+                        Rho::from_nf_old(action.spend.nullifier),
+                        action.output.rseed.ok_or(ProverError::MissingRandomSeed)?,
+                        action.output.note_version,
+                    ).into_option().ok_or(ProverError::InvalidOutputNote)?;
+                    let alpha = action.spend.alpha.ok_or(ProverError::MissingSpendAuthRandomizer)?;
+                    let rcv = action.rcv.clone().ok_or(ProverError::MissingValueCommitTrapdoor)?;
+                    crate::zsa::circuit::ZsaCircuit::from_action_context(
+                        spend, output_note, alpha, rcv,
+                    ).ok_or(ProverError::RhoMismatch)
+                })
+                .collect::<Result<Vec<_>, ProverError>>()?;
+            Proof::create_zsa(pk, &zsa_circuits, &instances, rng)
+                .map_err(ProverError::ProofFailed)?
+        } else {
+            Proof::create(pk, &circuits, &instances, rng)
+                .map_err(ProverError::ProofFailed)?
+        };
 
         self.zkproof = Some(proof);
 

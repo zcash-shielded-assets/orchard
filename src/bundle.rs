@@ -480,8 +480,9 @@ impl<T: Authorization, V: fmt::Debug, D: Domain + fmt::Debug> fmt::Debug for Bun
 /// proofs; see [`Bundle::try_from_parts`] (GHSA-2x4w-pxqw-58v9).
 pub(crate) fn validate_proof_size(proof: &Proof, num_actions: usize) -> Result<(), BundleError> {
     let expected = Proof::expected_proof_size(num_actions);
+    let expected_zsa = Proof::expected_zsa_proof_size(num_actions);
     let actual = proof.as_ref().len();
-    if actual == expected {
+    if actual == expected || actual == expected_zsa {
         Ok(())
     } else {
         Err(BundleError::NonCanonicalProofSize { expected, actual })

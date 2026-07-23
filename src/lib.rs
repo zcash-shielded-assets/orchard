@@ -133,6 +133,13 @@ impl Proof {
         const PER_ACTION: usize = 2272;
         BASE + PER_ACTION * num_actions
     }
+
+    /// Returns the expected ZSA proof size for the given number of actions.
+    pub const fn expected_zsa_proof_size(num_actions: usize) -> usize {
+        const ZSA_BASE: usize = 2720;
+        const ZSA_PER_ACTION: usize = 2288;
+        ZSA_BASE + ZSA_PER_ACTION * num_actions
+    }
 }
 
 /// The set of value pools supported by the Orchard protocol.
