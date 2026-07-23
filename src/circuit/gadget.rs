@@ -4,6 +4,7 @@ use ff::Field;
 use pasta_curves::pallas;
 
 use super::{commit_ivk::CommitIvkChip, note_commit::NoteCommitChip};
+use halo2_gadgets::utilities::lookup_range_check::PallasLookupRangeCheck;
 use crate::constants::{
     NullifierK, OrchardCommitDomains, OrchardFixedBases, OrchardFixedBasesFull, OrchardHashDomains,
     ValueCommitV,
@@ -18,6 +19,7 @@ use halo2_gadgets::{
         Hash as PoseidonHash, PoseidonSpongeInstructions, Pow5Chip as PoseidonChip,
     },
     sinsemilla::{chip::SinsemillaChip, merkle::chip::MerkleChip},
+    utilities::cond_swap::CondSwapChip,
 };
 use halo2_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Value},
@@ -30,53 +32,57 @@ pub(crate) mod add_chip;
 #[cfg(feature = "unstable-voting-circuits")]
 pub mod add_chip;
 
-impl super::Config {
-    pub(super) fn add_chip(&self) -> add_chip::AddChip {
+impl<Lookup: PallasLookupRangeCheck> super::Config<Lookup> {
+    pub(crate) fn add_chip(&self) -> add_chip::AddChip {
         add_chip::AddChip::construct(self.add_config.clone())
     }
 
-    pub(super) fn commit_ivk_chip(&self) -> CommitIvkChip {
+    pub(crate) fn commit_ivk_chip(&self) -> CommitIvkChip {
         CommitIvkChip::construct(self.commit_ivk_config.clone())
     }
 
-    pub(super) fn ecc_chip(&self, circuit_version: CircuitVersion) -> EccChip<OrchardFixedBases> {
+    pub(crate) fn ecc_chip(&self, circuit_version: CircuitVersion) -> EccChip<OrchardFixedBases, Lookup> {
         EccChip::construct(self.ecc_config.clone(), circuit_version)
     }
 
-    pub(super) fn sinsemilla_chip_1(
+    pub(crate) fn sinsemilla_chip_1(
         &self,
-    ) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> {
+    ) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup> {
         SinsemillaChip::construct(self.sinsemilla_config_1.clone())
     }
 
-    pub(super) fn sinsemilla_chip_2(
+    pub(crate) fn sinsemilla_chip_2(
         &self,
-    ) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> {
+    ) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup> {
         SinsemillaChip::construct(self.sinsemilla_config_2.clone())
     }
 
-    pub(super) fn merkle_chip_1(
+    pub(crate) fn merkle_chip_1(
         &self,
-    ) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> {
+    ) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup> {
         MerkleChip::construct(self.merkle_config_1.clone())
     }
 
-    pub(super) fn merkle_chip_2(
+    pub(crate) fn merkle_chip_2(
         &self,
-    ) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> {
+    ) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup> {
         MerkleChip::construct(self.merkle_config_2.clone())
     }
 
-    pub(super) fn poseidon_chip(&self) -> PoseidonChip<pallas::Base, 3, 2> {
+    pub(crate) fn poseidon_chip(&self) -> PoseidonChip<pallas::Base, 3, 2> {
         PoseidonChip::construct(self.poseidon_config.clone())
     }
 
-    pub(super) fn note_commit_chip_new(&self) -> NoteCommitChip {
+    pub(crate) fn note_commit_chip_new(&self) -> NoteCommitChip<Lookup> {
         NoteCommitChip::construct(self.new_note_commit_config.clone())
     }
 
-    pub(super) fn note_commit_chip_old(&self) -> NoteCommitChip {
+    pub(crate) fn note_commit_chip_old(&self) -> NoteCommitChip<Lookup> {
         NoteCommitChip::construct(self.old_note_commit_config.clone())
+    }
+
+    pub(crate) fn cond_swap_chip(&self) -> CondSwapChip<pallas::Base> {
+        CondSwapChip::construct(self.merkle_config_1.cond_swap_config().clone())
     }
 }
 

@@ -59,7 +59,10 @@ use halo2_gadgets::{
             MerklePath,
         },
     },
-    utilities::lookup_range_check::{LookupRangeCheck, LookupRangeCheckConfig},
+    utilities::lookup_range_check::{
+        LookupRangeCheck, LookupRangeCheckConfig, PallasLookupRangeCheck,
+        PallasLookupRangeCheckConfig,
+    },
 };
 
 #[cfg(not(feature = "unstable-voting-circuits"))]
@@ -209,33 +212,33 @@ impl OrchardCircuit for crate::zsa::flavor::OrchardVanilla {
 
 /// Configuration needed to use the Orchard Action circuit.
 #[derive(Clone, Debug)]
-pub struct Config {
+pub struct Config<Lookup: PallasLookupRangeCheck = PallasLookupRangeCheckConfig> {
     pub(crate) primary: Column<InstanceColumn>,
     pub(crate) q_orchard: Selector,
     pub(crate) advices: [Column<Advice>; 10],
     pub(crate) add_config: AddConfig,
-    pub(crate) ecc_config: EccConfig<OrchardFixedBases>,
+    pub(crate) ecc_config: EccConfig<OrchardFixedBases, Lookup>,
     pub(crate) poseidon_config: PoseidonConfig<pallas::Base, 3, 2>,
     pub(crate) merkle_config_1:
-        MerkleConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+        MerkleConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
     pub(crate) merkle_config_2:
-        MerkleConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+        MerkleConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
     pub(crate) sinsemilla_config_1:
-        SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+        SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
     pub(crate) sinsemilla_config_2:
-        SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+        SinsemillaConfig<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
     pub(crate) commit_ivk_config: CommitIvkConfig,
-    pub(crate) old_note_commit_config: NoteCommitConfig,
-    pub(crate) new_note_commit_config: NoteCommitConfig,
+    pub(crate) old_note_commit_config: NoteCommitConfig<Lookup>,
+    pub(crate) new_note_commit_config: NoteCommitConfig<Lookup>,
 }
 
 // Chip constructors for zsa-circuit.
 #[cfg(feature = "zsa-circuit")]
-impl Config {
+impl<Lookup: PallasLookupRangeCheck> Config<Lookup> {
     pub(crate) fn zsa_ecc_chip(
         &self,
         version: halo2_gadgets::ecc::chip::CircuitVersion,
-    ) -> EccChip<OrchardFixedBases> {
+    ) -> EccChip<OrchardFixedBases, Lookup> {
         EccChip::construct(self.ecc_config.clone(), version)
     }
     pub(crate) fn zsa_poseidon_chip(&self) -> PoseidonChip<pallas::Base, 3, 2> {
@@ -243,37 +246,37 @@ impl Config {
     }
     pub(crate) fn zsa_sinsemilla_chip_1(
         &self,
-    ) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> {
+    ) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup> {
         SinsemillaChip::construct(self.sinsemilla_config_1.clone())
     }
     pub(crate) fn zsa_sinsemilla_chip_2(
         &self,
-    ) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> {
+    ) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup> {
         SinsemillaChip::construct(self.sinsemilla_config_2.clone())
     }
     pub(crate) fn zsa_merkle_chip_1(
         &self,
-    ) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> {
+    ) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup> {
         MerkleChip::construct(self.merkle_config_1.clone())
     }
     pub(crate) fn zsa_merkle_chip_2(
         &self,
-    ) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases> {
+    ) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup> {
         MerkleChip::construct(self.merkle_config_2.clone())
     }
     pub(crate) fn zsa_commit_ivk_chip(&self) -> CommitIvkChip {
         CommitIvkChip::construct(self.commit_ivk_config.clone())
     }
-    pub(crate) fn zsa_note_commit_chip_old(&self) -> NoteCommitChip {
+    pub(crate) fn zsa_note_commit_chip_old(&self) -> NoteCommitChip<Lookup> {
         NoteCommitChip::construct(self.old_note_commit_config.clone())
     }
-    pub(crate) fn zsa_note_commit_chip_new(&self) -> NoteCommitChip {
+    pub(crate) fn zsa_note_commit_chip_new(&self) -> NoteCommitChip<Lookup> {
         NoteCommitChip::construct(self.new_note_commit_config.clone())
     }
     pub(crate) fn zsa_add_chip(&self) -> AddChip {
         AddChip::construct(self.add_config.clone())
     }
-    pub(crate) fn zsa_note_commit_chip_old_backup(&self) -> NoteCommitChip {
+    pub(crate) fn zsa_note_commit_chip_old_backup(&self) -> NoteCommitChip<Lookup> {
         NoteCommitChip::construct(self.old_note_commit_config.clone())
     }
 }
@@ -504,8 +507,9 @@ impl Circuit {
 }
 
 impl Config {
-    /// Configures the Orchard Action constraint system shared by every circuit version.
-    fn configure(meta: &mut plonk::ConstraintSystem<pallas::Base>) -> Self {
+    /// Configures the Orchard Action constraint system for the vanilla circuit
+    /// using the default [`PallasLookupRangeCheckConfig`].
+    pub(crate) fn configure_vanilla(meta: &mut plonk::ConstraintSystem<pallas::Base>) -> Self {
         // Advice columns used in the Orchard circuit.
         let advices = [
             meta.advice_column(),
@@ -701,11 +705,11 @@ impl Config {
 /// Cells carrying the addresses of an action's spent and newly created notes, returned
 /// from the shared synthesis logic so that circuit versions can impose additional
 /// constraints on them.
-struct AddressPoints {
-    g_d_old: NonIdentityPoint<pallas::Affine, EccChip<OrchardFixedBases>>,
-    pk_d_old: NonIdentityPoint<pallas::Affine, EccChip<OrchardFixedBases>>,
-    g_d_new: NonIdentityPoint<pallas::Affine, EccChip<OrchardFixedBases>>,
-    pk_d_new: NonIdentityPoint<pallas::Affine, EccChip<OrchardFixedBases>>,
+struct AddressPoints<Lookup: PallasLookupRangeCheck> {
+    g_d_old: NonIdentityPoint<pallas::Affine, EccChip<OrchardFixedBases, Lookup>>,
+    pk_d_old: NonIdentityPoint<pallas::Affine, EccChip<OrchardFixedBases, Lookup>>,
+    g_d_new: NonIdentityPoint<pallas::Affine, EccChip<OrchardFixedBases, Lookup>>,
+    pk_d_new: NonIdentityPoint<pallas::Affine, EccChip<OrchardFixedBases, Lookup>>,
 }
 
 impl Circuit {
@@ -714,11 +718,11 @@ impl Circuit {
     /// and new note addresses so that circuit versions can impose additional
     /// constraints on them.
     #[allow(non_snake_case)]
-    fn synthesize_base(
+    fn synthesize_base<Lookup: PallasLookupRangeCheck>(
         &self,
-        config: &Config,
+        config: &Config<Lookup>,
         layouter: &mut impl Layouter<pallas::Base>,
-    ) -> Result<AddressPoints, plonk::Error> {
+    ) -> Result<AddressPoints<Lookup>, plonk::Error> {
         // Load the Sinsemilla generator lookup table used by the whole circuit.
         SinsemillaChip::load(config.sinsemilla_config_1.clone(), layouter)?;
 
@@ -1132,10 +1136,10 @@ impl Circuit {
     /// `disableCrossAddress` so these rows occupy every advice column; that prevents
     /// the floor planner from overlapping another selector-enabled region with the
     /// check rows.
-    fn synthesize_cross_address_checks(
-        config: &Config,
+    fn synthesize_cross_address_checks<Lookup: PallasLookupRangeCheck>(
+        config: &Config<Lookup>,
         layouter: &mut impl Layouter<pallas::Base>,
-        addrs: &AddressPoints,
+        addrs: &AddressPoints<Lookup>,
     ) -> Result<(), plonk::Error> {
         let AddressPoints {
             g_d_old,
@@ -1254,7 +1258,7 @@ impl plonk::Circuit<pallas::Base> for Circuit {
     }
 
     fn configure(meta: &mut plonk::ConstraintSystem<pallas::Base>) -> Self::Config {
-        Config::configure(meta)
+        Config::configure_vanilla(meta)
     }
 
     fn synthesize(

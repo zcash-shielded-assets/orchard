@@ -31,14 +31,14 @@ use halo2_gadgets::{
     },
     utilities::{
         bool_check,
-        lookup_range_check::{LookupRangeCheck, LookupRangeCheckConfig, PallasLookupRangeCheck},
+        lookup_range_check::{LookupRangeCheckConfig, PallasLookupRangeCheck},
         FieldValue, RangeConstrained,
     },
 };
 
-type NoteCommitPiece = MessagePiece<
+type NoteCommitPiece<Lookup: PallasLookupRangeCheck = LookupRangeCheckConfig<pallas::Base, 10>> = MessagePiece<
     pallas::Affine,
-    SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+    SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
     10,
     253,
 >;
@@ -129,15 +129,15 @@ impl DecomposeB {
     }
 
     #[allow(clippy::type_complexity)]
-    fn decompose(
-        lookup_config: &LookupRangeCheckConfig<pallas::Base, 10>,
-        chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+    fn decompose<Lookup: PallasLookupRangeCheck>(
+        lookup_config: &Lookup,
+        chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
         layouter: &mut impl Layouter<pallas::Base>,
         g_d: &NonIdentityEccPoint,
         pk_d: &NonIdentityEccPoint,
     ) -> Result<
         (
-            NoteCommitPiece,
+            NoteCommitPiece<Lookup>,
             RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
             RangeConstrained<pallas::Base, Value<pallas::Base>>,
             RangeConstrained<pallas::Base, Value<pallas::Base>>,
@@ -176,10 +176,10 @@ impl DecomposeB {
         Ok((b, b_0, b_1, b_2, b_3))
     }
 
-    fn assign(
+    fn assign<Lookup: PallasLookupRangeCheck>(
         &self,
         layouter: &mut impl Layouter<pallas::Base>,
-        b: NoteCommitPiece,
+        b: NoteCommitPiece<Lookup>,
         b_0: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
         b_1: RangeConstrained<pallas::Base, Value<pallas::Base>>,
         b_2: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
@@ -274,15 +274,15 @@ impl DecomposeD {
     }
 
     #[allow(clippy::type_complexity)]
-    fn decompose(
-        lookup_config: &LookupRangeCheckConfig<pallas::Base, 10>,
-        chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+    fn decompose<Lookup: PallasLookupRangeCheck>(
+        lookup_config: &Lookup,
+        chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
         layouter: &mut impl Layouter<pallas::Base>,
         pk_d: &NonIdentityEccPoint,
         value: &AssignedCell<NoteValue, pallas::Base>,
     ) -> Result<
         (
-            NoteCommitPiece,
+            NoteCommitPiece<Lookup>,
             RangeConstrained<pallas::Base, Value<pallas::Base>>,
             RangeConstrained<pallas::Base, Value<pallas::Base>>,
             RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
@@ -315,10 +315,10 @@ impl DecomposeD {
         Ok((d, d_0, d_1, d_2))
     }
 
-    fn assign(
+    fn assign<Lookup: PallasLookupRangeCheck>(
         &self,
         layouter: &mut impl Layouter<pallas::Base>,
-        d: NoteCommitPiece,
+        d: NoteCommitPiece<Lookup>,
         d_0: RangeConstrained<pallas::Base, Value<pallas::Base>>,
         d_1: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
         d_2: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
@@ -396,15 +396,15 @@ impl DecomposeE {
     }
 
     #[allow(clippy::type_complexity)]
-    fn decompose(
-        lookup_config: &LookupRangeCheckConfig<pallas::Base, 10>,
-        chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+    fn decompose<Lookup: PallasLookupRangeCheck>(
+        lookup_config: &Lookup,
+        chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
         layouter: &mut impl Layouter<pallas::Base>,
         value: &AssignedCell<NoteValue, pallas::Base>,
         rho: &AssignedCell<pallas::Base, pallas::Base>,
     ) -> Result<
         (
-            NoteCommitPiece,
+            NoteCommitPiece<Lookup>,
             RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
             RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
         ),
@@ -437,10 +437,10 @@ impl DecomposeE {
         Ok((e, e_0, e_1))
     }
 
-    fn assign(
+    fn assign<Lookup: PallasLookupRangeCheck>(
         &self,
         layouter: &mut impl Layouter<pallas::Base>,
-        e: NoteCommitPiece,
+        e: NoteCommitPiece<Lookup>,
         e_0: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
         e_1: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
     ) -> Result<(), Error> {
@@ -521,15 +521,15 @@ impl DecomposeG {
     }
 
     #[allow(clippy::type_complexity)]
-    fn decompose(
-        lookup_config: &LookupRangeCheckConfig<pallas::Base, 10>,
-        chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+    fn decompose<Lookup: PallasLookupRangeCheck>(
+        lookup_config: &Lookup,
+        chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
         layouter: &mut impl Layouter<pallas::Base>,
         rho: &AssignedCell<pallas::Base, pallas::Base>,
         psi: &AssignedCell<pallas::Base, pallas::Base>,
     ) -> Result<
         (
-            NoteCommitPiece,
+            NoteCommitPiece<Lookup>,
             RangeConstrained<pallas::Base, Value<pallas::Base>>,
             RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
         ),
@@ -558,10 +558,10 @@ impl DecomposeG {
         Ok((g, g_0, g_1))
     }
 
-    fn assign(
+    fn assign<Lookup: PallasLookupRangeCheck>(
         &self,
         layouter: &mut impl Layouter<pallas::Base>,
-        g: NoteCommitPiece,
+        g: NoteCommitPiece<Lookup>,
         g_0: RangeConstrained<pallas::Base, Value<pallas::Base>>,
         g_1: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
         z1_g: AssignedCell<pallas::Base, pallas::Base>,
@@ -643,14 +643,14 @@ impl DecomposeH {
     }
 
     #[allow(clippy::type_complexity)]
-    fn decompose(
-        lookup_config: &LookupRangeCheckConfig<pallas::Base, 10>,
-        chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
+    fn decompose<Lookup: PallasLookupRangeCheck>(
+        lookup_config: &Lookup,
+        chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
         layouter: &mut impl Layouter<pallas::Base>,
         psi: &AssignedCell<pallas::Base, pallas::Base>,
     ) -> Result<
         (
-            NoteCommitPiece,
+            NoteCommitPiece<Lookup>,
             RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
             RangeConstrained<pallas::Base, Value<pallas::Base>>,
         ),
@@ -680,10 +680,10 @@ impl DecomposeH {
         Ok((h, h_0, h_1))
     }
 
-    fn assign(
+    fn assign<Lookup: PallasLookupRangeCheck>(
         &self,
         layouter: &mut impl Layouter<pallas::Base>,
-        h: NoteCommitPiece,
+        h: NoteCommitPiece<Lookup>,
         h_0: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
         h_1: RangeConstrained<pallas::Base, Value<pallas::Base>>,
     ) -> Result<AssignedCell<pallas::Base, pallas::Base>, Error> {
@@ -788,11 +788,11 @@ impl GdCanonicity {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn assign(
+    fn assign<Lookup: PallasLookupRangeCheck>(
         &self,
         layouter: &mut impl Layouter<pallas::Base>,
         g_d: &NonIdentityEccPoint,
-        a: NoteCommitPiece,
+        a: NoteCommitPiece<Lookup>,
         b_0: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
         b_1: AssignedCell<pallas::Base, pallas::Base>,
         a_prime: AssignedCell<pallas::Base, pallas::Base>,
@@ -904,12 +904,12 @@ impl PkdCanonicity {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn assign(
+    fn assign<Lookup: PallasLookupRangeCheck>(
         &self,
         layouter: &mut impl Layouter<pallas::Base>,
         pk_d: &NonIdentityEccPoint,
         b_3: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
-        c: NoteCommitPiece,
+        c: NoteCommitPiece<Lookup>,
         d_0: AssignedCell<pallas::Base, pallas::Base>,
         b3_c_prime: AssignedCell<pallas::Base, pallas::Base>,
         z13_c: AssignedCell<pallas::Base, pallas::Base>,
@@ -1097,12 +1097,12 @@ impl RhoCanonicity {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn assign(
+    fn assign<Lookup: PallasLookupRangeCheck>(
         &self,
         layouter: &mut impl Layouter<pallas::Base>,
         rho: AssignedCell<pallas::Base, pallas::Base>,
         e_1: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
-        f: NoteCommitPiece,
+        f: NoteCommitPiece<Lookup>,
         g_0: AssignedCell<pallas::Base, pallas::Base>,
         e1_f_prime: AssignedCell<pallas::Base, pallas::Base>,
         z13_f: AssignedCell<pallas::Base, pallas::Base>,
@@ -1592,18 +1592,18 @@ pub(crate) mod gadgets {
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-    pub(crate) fn note_commit(
+    pub(crate) fn note_commit<Lookup: PallasLookupRangeCheck>(
         mut layouter: impl Layouter<pallas::Base>,
-        chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases>,
-        ecc_chip: EccChip<OrchardFixedBases>,
-        note_commit_chip: NoteCommitChip,
+        chip: SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
+        ecc_chip: EccChip<OrchardFixedBases, Lookup>,
+        note_commit_chip: NoteCommitChip<Lookup>,
         g_d: &NonIdentityEccPoint,
         pk_d: &NonIdentityEccPoint,
         value: AssignedCell<NoteValue, pallas::Base>,
         rho: AssignedCell<pallas::Base, pallas::Base>,
         psi: AssignedCell<pallas::Base, pallas::Base>,
-        rcm: ScalarFixed<pallas::Affine, EccChip<OrchardFixedBases>>,
-    ) -> Result<Point<pallas::Affine, EccChip<OrchardFixedBases>>, Error> {
+        rcm: ScalarFixed<pallas::Affine, EccChip<OrchardFixedBases, Lookup>>,
+    ) -> Result<Point<pallas::Affine, EccChip<OrchardFixedBases, Lookup>>, Error> {
         let lookup_config = chip.config().lookup_config();
 
         // `a` = bits 0..=249 of `x(g_d)`
@@ -1802,8 +1802,8 @@ pub(crate) mod gadgets {
     /// Specifications:
     /// - [`g_d` canonicity](https://p.z.cash/orchard-0.1:note-commit-canonicity-g_d?partial)
     /// - [`y` canonicity](https://p.z.cash/orchard-0.1:note-commit-canonicity-y?partial)
-    fn canon_bitshift_130(
-        lookup_config: &LookupRangeCheckConfig<pallas::Base, 10>,
+    fn canon_bitshift_130<Lookup: PallasLookupRangeCheck>(
+        lookup_config: &Lookup,
         mut layouter: impl Layouter<pallas::Base>,
         a: AssignedCell<pallas::Base, pallas::Base>,
     ) -> Result<CanonicityBounds, Error> {
@@ -1836,8 +1836,8 @@ pub(crate) mod gadgets {
     /// Check canonicity of `x(pk_d)` encoding.
     ///
     /// [Specification](https://p.z.cash/orchard-0.1:note-commit-canonicity-pk_d?partial).
-    fn pkd_x_canonicity(
-        lookup_config: &LookupRangeCheckConfig<pallas::Base, 10>,
+    fn pkd_x_canonicity<Lookup: PallasLookupRangeCheck>(
+        lookup_config: &Lookup,
         mut layouter: impl Layouter<pallas::Base>,
         b_3: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
         c: AssignedCell<pallas::Base, pallas::Base>,
@@ -1877,8 +1877,8 @@ pub(crate) mod gadgets {
     /// Check canonicity of `rho` encoding.
     ///
     /// [Specification](https://p.z.cash/orchard-0.1:note-commit-canonicity-rho?partial).
-    fn rho_canonicity(
-        lookup_config: &LookupRangeCheckConfig<pallas::Base, 10>,
+    fn rho_canonicity<Lookup: PallasLookupRangeCheck>(
+        lookup_config: &Lookup,
         mut layouter: impl Layouter<pallas::Base>,
         e_1: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
         f: AssignedCell<pallas::Base, pallas::Base>,
@@ -1918,8 +1918,8 @@ pub(crate) mod gadgets {
     /// Check canonicity of `psi` encoding.
     ///
     /// [Specification](https://p.z.cash/orchard-0.1:note-commit-canonicity-psi?partial).
-    fn psi_canonicity(
-        lookup_config: &LookupRangeCheckConfig<pallas::Base, 10>,
+    fn psi_canonicity<Lookup: PallasLookupRangeCheck>(
+        lookup_config: &Lookup,
         mut layouter: impl Layouter<pallas::Base>,
         g_1: RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
         g_2: AssignedCell<pallas::Base, pallas::Base>,
@@ -1960,8 +1960,8 @@ pub(crate) mod gadgets {
     /// Specifications:
     /// - [`y` decomposition](https://p.z.cash/orchard-0.1:note-commit-decomposition-y?partial)
     /// - [`y` canonicity](https://p.z.cash/orchard-0.1:note-commit-canonicity-y?partial)
-    fn y_canonicity(
-        lookup_config: &LookupRangeCheckConfig<pallas::Base, 10>,
+    fn y_canonicity<Lookup: PallasLookupRangeCheck>(
+        lookup_config: &Lookup,
         y_canon: &YCanonicity,
         mut layouter: impl Layouter<pallas::Base>,
         y: AssignedCell<pallas::Base, pallas::Base>,

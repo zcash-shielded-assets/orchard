@@ -17,7 +17,7 @@ use halo2_gadgets::{
     },
     utilities::{
         bool_check,
-        lookup_range_check::{LookupRangeCheck, LookupRangeCheck4_5BConfig, LookupRangeCheckConfig, PallasLookupRangeCheck4_5BConfig},
+        lookup_range_check::{LookupRangeCheck, LookupRangeCheck4_5BConfig, PallasLookupRangeCheck4_5BConfig},
     },
 };
 
@@ -47,43 +47,9 @@ use crate::{
 };
 
 /// ZSA-specific circuit configuration.
-#[derive(Clone, Debug)]
-pub struct ZsaConfig {
-    pub(crate) primary: halo2_proofs::plonk::Column<halo2_proofs::plonk::Instance>,
-    pub(crate) q_orchard: halo2_proofs::plonk::Selector,
-    pub(crate) advices: [halo2_proofs::plonk::Column<halo2_proofs::plonk::Advice>; 10],
-    pub(crate) add_config: crate::circuit::gadget::add_chip::AddConfig,
-    pub(crate) ecc_config: halo2_gadgets::ecc::chip::EccConfig<OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
-    pub(crate) poseidon_config: halo2_gadgets::poseidon::Pow5Config<pallas::Base, 3, 2>,
-    pub(crate) merkle_config_1: halo2_gadgets::sinsemilla::merkle::chip::MerkleConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
-    pub(crate) merkle_config_2: halo2_gadgets::sinsemilla::merkle::chip::MerkleConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
-    pub(crate) sinsemilla_config_1: halo2_gadgets::sinsemilla::chip::SinsemillaConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
-    pub(crate) sinsemilla_config_2: halo2_gadgets::sinsemilla::chip::SinsemillaConfig<OrchardHashDomains, crate::constants::OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
-    pub(crate) commit_ivk_config: crate::circuit::commit_ivk::CommitIvkConfig,
-    pub(crate) old_note_commit_config: crate::circuit::note_commit::NoteCommitConfig<PallasLookupRangeCheck4_5BConfig>,
-    pub(crate) new_note_commit_config: crate::circuit::note_commit::NoteCommitConfig<PallasLookupRangeCheck4_5BConfig>,
-}
+/// Type alias for [`Config`] with the optimized 4/5-bit lookup range check.
+pub type ZsaConfig = crate::circuit::Config<PallasLookupRangeCheck4_5BConfig>;
 
-impl ZsaConfig {
-    pub(crate) fn zsa_ecc_chip(&self, version: halo2_gadgets::ecc::chip::CircuitVersion) -> EccChip<OrchardFixedBases, PallasLookupRangeCheck4_5BConfig> {
-        EccChip::<OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>::construct(self.ecc_config.clone(), version)
-    }
-    pub(crate) fn zsa_add_chip(&self) -> AddChip { AddChip::construct(self.add_config.clone()) }
-    pub(crate) fn zsa_poseidon_chip(&self) -> PoseidonChip<pallas::Base, 3, 2> { PoseidonChip::construct(self.poseidon_config.clone()) }
-    pub(crate) fn zsa_sinsemilla_chip_1(&self) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig> { SinsemillaChip::construct(self.sinsemilla_config_1.clone()) }
-    pub(crate) fn zsa_sinsemilla_chip_2(&self) -> SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig> { SinsemillaChip::construct(self.sinsemilla_config_2.clone()) }
-    pub(crate) fn zsa_merkle_chip_1(&self) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig> { MerkleChip::construct(self.merkle_config_1.clone()) }
-    pub(crate) fn zsa_merkle_chip_2(&self) -> MerkleChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, PallasLookupRangeCheck4_5BConfig> { MerkleChip::construct(self.merkle_config_2.clone()) }
-    pub(crate) fn zsa_commit_ivk_chip(&self) -> CommitIvkChip { CommitIvkChip::construct(self.commit_ivk_config.clone()) }
-    pub(crate) fn zsa_note_commit_chip_old(&self) -> NoteCommitChip { NoteCommitChip::construct(self.old_note_commit_config.clone()) }
-    pub(crate) fn zsa_note_commit_chip_new(&self) -> NoteCommitChip { NoteCommitChip::construct(self.new_note_commit_config.clone()) }
-    pub(crate) fn zsa_cond_swap_chip(&self) -> halo2_gadgets::utilities::cond_swap::CondSwapChip<pallas::Base> {
-        // Reuses the CondSwapConfig already configured inside the Merkle chip
-        halo2_gadgets::utilities::cond_swap::CondSwapChip::construct(
-            self.merkle_config_1.cond_swap_config().clone(),
-        )
-    }
-}
 
 /// ZSA-specific circuit type that uses [`OrchardZSA`] for its constraint system.
 /// Lives alongside the vanilla [`Circuit`](crate::circuit::Circuit) and produces
@@ -307,7 +273,6 @@ impl OrchardCircuit for OrchardZSA {
 
         // Fixed columns for the Sinsemilla generator lookup table
         let table_idx = meta.lookup_table_column();
-        let table_range_check_tag = meta.lookup_table_column();
         let lookup = (
             table_idx,
             meta.lookup_table_column(),
@@ -452,7 +417,7 @@ impl OrchardCircuit for OrchardZSA {
             unpack(circuit.additional_zsa_witnesses.clone());
 
         // Construct the ECC chip.
-        let ecc_chip = config.zsa_ecc_chip(CircuitVersion::AnchoredBase);
+        let ecc_chip = config.ecc_chip(CircuitVersion::AnchoredBase);
 
         // Witness private inputs that are used across multiple checks.
         let (psi_nf, psi_old, rho_old, cm_old, g_d_old, ak_P, nk, v_old, v_new, asset) = {
@@ -554,7 +519,7 @@ impl OrchardCircuit for OrchardZSA {
                 .path
                 .map(|typed_path| typed_path.map(|node| node.inner()));
             let merkle_inputs = MerklePath::construct(
-                [config.zsa_merkle_chip_1(), config.zsa_merkle_chip_2()],
+                [config.merkle_chip_1(), config.merkle_chip_2()],
                 OrchardHashDomains::MerkleCrh,
                 circuit.pos,
                 path,
@@ -620,7 +585,7 @@ impl OrchardCircuit for OrchardZSA {
                 v_net_magnitude_sign.clone(),
                 rcv,
                 Some(ZsaValueCommitParams {
-                    sinsemilla_chip: config.zsa_sinsemilla_chip_1(),
+                    sinsemilla_chip: config.sinsemilla_chip_1(),
                     asset_base: asset.clone(),
                 }),
             )?;
@@ -640,15 +605,15 @@ impl OrchardCircuit for OrchardZSA {
         let nf_old = {
             let nf_old = derive_nullifier(
                 layouter.namespace(|| "nf_old = DeriveNullifier_nk(rho_old, psi_nf, cm_old)"),
-                config.zsa_poseidon_chip(),
-                config.zsa_add_chip(),
+                config.poseidon_chip(),
+                config.add_chip(),
                 ecc_chip.clone(),
                 rho_old.clone(),
                 &psi_nf,
                 &cm_old,
                 nk.clone(),
                 Some(ZsaNullifierParams {
-                    cond_swap_chip: config.zsa_cond_swap_chip(),
+                    cond_swap_chip: config.cond_swap_chip(),
                     split_flag: split_flag.clone(),
                 }),
             )?;
@@ -693,9 +658,9 @@ impl OrchardCircuit for OrchardZSA {
                 )?;
 
                 commit_ivk(
-                    config.zsa_sinsemilla_chip_1(),
+                    config.sinsemilla_chip_1(),
                     ecc_chip.clone(),
-                    config.zsa_commit_ivk_chip(),
+                    config.commit_ivk_chip(),
                     layouter.namespace(|| "CommitIvk"),
                     ak,
                     nk,
@@ -746,9 +711,9 @@ impl OrchardCircuit for OrchardZSA {
                 layouter.namespace(|| {
                     "g★_d || pk★_d || i2lebsp_{64}(v) || i2lebsp_{255}(rho) || i2lebsp_{255}(psi)"
                 }),
-                config.zsa_sinsemilla_chip_1(),
-                config.zsa_ecc_chip(CircuitVersion::AnchoredBase),
-                config.zsa_note_commit_chip_old(),
+                config.sinsemilla_chip_1(),
+                config.ecc_chip(CircuitVersion::AnchoredBase),
+                config.note_commit_chip_old(),
                 g_d_old.inner(),
                 pk_d_old.inner(),
                 v_old.clone(),
@@ -809,9 +774,9 @@ impl OrchardCircuit for OrchardZSA {
                 layouter.namespace(|| {
                     "g★_d || pk★_d || i2lebsp_{64}(v) || i2lebsp_{255}(rho) || i2lebsp_{255}(psi)"
                 }),
-                config.zsa_sinsemilla_chip_2(),
-                config.zsa_ecc_chip(CircuitVersion::AnchoredBase),
-                config.zsa_note_commit_chip_new(),
+                config.sinsemilla_chip_2(),
+                config.ecc_chip(CircuitVersion::AnchoredBase),
+                config.note_commit_chip_new(),
                 g_d_new.inner(),
                 pk_d_new.inner(),
                 v_new.clone(),
