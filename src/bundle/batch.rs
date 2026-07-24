@@ -108,6 +108,43 @@ impl<'a> BatchValidator<'a> {
         Ok(())
     }
 
+    /// Adds the proof and RedPallas signatures from the given bundle to the validator
+    /// for verification against the ZSA circuit.
+    ///
+    /// `enable_zsa` controls whether ZSA-specific circuit constraints are active.
+    /// For vanilla (non-ZSA) transactions on Nu7, pass `false`.
+    #[cfg(feature = "zsa")]
+    pub fn add_bundle_zsa<V: Copy + Into<i64>>(
+        &mut self,
+        bundle: &Bundle<Authorized, V>,
+        sighash: [u8; 32],
+        enable_zsa: bool,
+    ) {
+        tracing::info!(
+            actions = bundle.actions().len(),
+            enable_zsa,
+            "add_bundle_zsa: verifying ZSA bundle"
+        );
+        for action in bundle.actions().iter() {
+            self.signatures.push(BundleSignature {
+                signature: action
+                    .rk()
+                    .create_batch_item(action.authorization().clone(), &sighash),
+            });
+        }
+
+        self.signatures.push(BundleSignature {
+            signature: bundle
+                .binding_validating_key()
+                .create_batch_item(bundle.authorization().binding_signature().clone(), &sighash),
+        });
+
+        bundle
+            .authorization()
+            .proof()
+            .add_to_batch(&mut self.proofs, bundle.to_zsa_instances(enable_zsa));
+    }
+
     /// Batch-validates the accumulated bundles.
     ///
     /// Returns `true` if every proof and signature in every bundle added to the batch

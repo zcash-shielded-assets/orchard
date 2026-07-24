@@ -18,6 +18,7 @@ pub mod burn;
 #[cfg(feature = "zsa")]
 pub mod commitments;
 pub mod circuit;
+pub(crate) mod note_commit;
 pub(crate) mod reference_keys;
 #[cfg(feature = "zsa")]
 pub mod flavor;

@@ -136,8 +136,10 @@ impl Proof {
 
     /// Returns the expected ZSA proof size for the given number of actions.
     pub const fn expected_zsa_proof_size(num_actions: usize) -> usize {
-        const ZSA_BASE: usize = 2720;
-        const ZSA_PER_ACTION: usize = 2288;
+        // ZSA circuit adds 128 bytes of fixed overhead (additional columns/constraints)
+        // but the per-action size is the same as vanilla.
+        const ZSA_BASE: usize = 2848;
+        const ZSA_PER_ACTION: usize = 2272;
         ZSA_BASE + ZSA_PER_ACTION * num_actions
     }
 }
@@ -179,4 +181,13 @@ pub enum ProtocolVersion {
     /// For transactional bundles affecting the [`ValuePool::Ironwood`] value pool, cross-address
     /// transfers are permitted and notes use V3 plaintexts.
     V3,
+    /// The version of the Orchard protocol used in Zcash NU7 (ZSA), instantiated for both the
+    /// Orchard and Ironwood value pools.
+    ///
+    /// Uses the ZSA circuit, which adds support for custom assets, split notes, and issuance.
+    /// Cross-address transfers are permitted for the Orchard value pool (unlike V3, which
+    /// prohibits them). This circuit is a superset of the post-NU6.3 circuit; when ZSA features
+    /// are not in use (`enable_zsa = false`), it functions identically to the V3 circuit for
+    /// Orchard transfers.
+    ZSA,
 }

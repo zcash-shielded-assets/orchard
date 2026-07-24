@@ -565,13 +565,22 @@ impl Note {
         }
     }
 
+    /// Derives the ψ value used for this note's nullifier.
+    ///
+    /// For a split note this uses `rseed_split_note`; otherwise it equals
+    /// [`Note::psi`]. This is the ψ that the Action circuit must witness as
+    /// `psi_nf`, and it must stay consistent with [`Note::nullifier`] (which
+    /// is why the two share this single derivation).
+    pub(crate) fn psi_nf(&self) -> pallas::Base {
+        self.rseed_split_note.unwrap_or(self.rseed).psi(&self.rho())
+    }
+
     /// Derives the nullifier for this note.
     pub fn nullifier(&self, fvk: &FullViewingKey) -> Nullifier {
-        let selected_rseed = self.rseed_split_note.unwrap_or(self.rseed);
         Nullifier::derive(
             fvk.nk(),
             self.rho().0,
-            selected_rseed.psi(&self.rho()),
+            self.psi_nf(),
             self.commitment(),
         )
     }

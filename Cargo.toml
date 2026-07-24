@@ -91,9 +91,8 @@ unstable-voting-circuits = []
 multicore = ["halo2_proofs/multicore"]
 dev-graph = ["halo2_proofs/dev-graph", "image", "plotters"]
 test-dependencies = ["proptest", "rand/std"]
-zsa = ["secp256k1", "circuit"]
-zsa-issuance = ["zsa"]
-zsa-circuit = []
+zsa = ["secp256k1", "circuit", "zsa-circuit"]
+zsa-circuit = ["circuit"]
 
 [[bench]]
 name = "note_decryption"
