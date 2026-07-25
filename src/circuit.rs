@@ -1,5 +1,6 @@
 //! The Orchard Action circuit implementation.
 
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use group::{Curve, GroupEncoding};
@@ -1312,6 +1313,11 @@ impl VerifyingKey {
         }
     }
 
+    /// Returns a deterministic hash of the circuit structure for comparison.
+    pub fn pinned(&self) -> String {
+        format!("{:#?}", self.vk.pinned())
+    }
+
     /// The circuit version this verifying key was built for.
     pub fn circuit_version(&self) -> OrchardCircuitVersion {
         self.circuit_version
@@ -1422,11 +1428,6 @@ pub struct Instance {
     enable_spend: bool,
     enable_output: bool,
     cross_address_disabled: bool,
-    /// ZSA circuit: whether ZSA custom asset logic is active.
-    /// Shares circuit index 9 with `cross_address_disabled` — only
-    /// one circuit flavor is active per proof, so no conflict.
-    #[cfg(feature = "zsa")]
-    pub(crate) enable_zsa: bool,
 }
 
 impl Instance {
@@ -1471,8 +1472,6 @@ impl Instance {
             enable_spend: flags.spends_enabled(),
             enable_output: flags.outputs_enabled(),
             cross_address_disabled: !flags.cross_address_enabled(),
-            #[cfg(feature = "zsa")]
-            enable_zsa: flags.zsa_enabled(),
         })
     }
 
@@ -1532,19 +1531,8 @@ impl CircuitInstance for Instance {
         instance[CMX] = self.cmx.inner();
         instance[ENABLE_SPEND] = vesta::Scalar::from(u64::from(self.enable_spend));
         instance[ENABLE_OUTPUT] = vesta::Scalar::from(u64::from(self.enable_output));
-        // Instance columns are zero-padded over the evaluation domain, so for statements
-        // where this flag is false, this encoding is commitment-identical to the historical
-        // nine-row encoding. Pre-NU 6.3 circuits leave this row unconstrained, which is why
-        // restricted statements must never reach those keys (see `Proof::create` and
-        // `Proof::verify`).
         instance[DISABLE_CROSS_ADDRESS] =
             vesta::Scalar::from(u64::from(self.cross_address_disabled));
-        // ZSA circuit reuses index 9: write enable_zsa after cross_address_disabled
-        // so it takes effect when the ZSA feature is active.
-        #[cfg(feature = "zsa")]
-        {
-            instance[ENABLE_ZSA] = vesta::Scalar::from(u64::from(self.enable_zsa));
-        }
 
         [instance]
     }

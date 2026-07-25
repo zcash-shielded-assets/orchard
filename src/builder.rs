@@ -489,6 +489,24 @@ impl<D: Domain> Clone for OutputInfo<D> {
     }
 }
 
+impl<D: Domain> OutputInfo<D> {
+    /// Re-parameterizes this output to a different note-encryption domain. Every field is
+    /// domain-independent; only the phantom marker changes, so the note encrypted at build
+    /// time uses `D2` (e.g. the 612-byte `OrchardZSADomain` ciphertext including the asset).
+    pub(crate) fn into_domain<D2: Domain>(self) -> OutputInfo<D2> {
+        OutputInfo {
+            ovk: self.ovk,
+            recipient: self.recipient,
+            value: self.value,
+            asset: self.asset,
+            memo: self.memo,
+            note_version: self.note_version,
+            randomized_ciphertext: self.randomized_ciphertext,
+            _domain: PhantomData,
+        }
+    }
+}
+
 impl<D: DomainExt> OutputInfo<D> {
     /// Constructs a new OutputInfo from its constituent parts.
     pub fn new(
@@ -657,6 +675,15 @@ impl<D: DomainExt> ChangeInfo<D> {
     /// ownership has already served its purpose (validation at construction).
     fn into_output(self) -> OutputInfo<D> {
         self.output
+    }
+
+    /// Re-parameterizes this change output to a different note-encryption domain.
+    pub(crate) fn into_domain<D2: Domain>(self) -> ChangeInfo<D2> {
+        ChangeInfo {
+            output: self.output.into_domain(),
+            fvk: self.fvk,
+            scope: self.scope,
+        }
     }
 }
 
@@ -1004,6 +1031,25 @@ impl<D: DomainExt> Builder<D> {
     /// transaction being constructed.
     pub fn changes(&self) -> &Vec<ChangeInfo<D>> {
         &self.changes
+    }
+
+    /// Re-parameterizes this builder to a different note-encryption domain, preserving all
+    /// accumulated spends, outputs, and changes (whose data is domain-independent).
+    ///
+    /// This lets an integration accumulate outputs under the default [`OrchardDomain`] and then,
+    /// for a ZSA (Nu7) bundle, switch to [`crate::zsa::domain::OrchardZSADomain`] just before
+    /// building, so that note encryption, the resulting `enc_ciphertext` length, the transaction
+    /// sighash, and the wire serialization are all the ZSA (612-byte) form.
+    pub fn into_domain<D2: DomainExt>(self) -> Builder<D2> {
+        Builder {
+            bundle_type: self.bundle_type,
+            bundle_version: self.bundle_version,
+            flags: self.flags,
+            spends: self.spends,
+            outputs: self.outputs.into_iter().map(OutputInfo::into_domain).collect(),
+            changes: self.changes.into_iter().map(ChangeInfo::into_domain).collect(),
+            anchor: self.anchor,
+        }
     }
 
     /// The net value of the bundle to be built. The value of all spends,

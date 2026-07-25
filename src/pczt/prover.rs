@@ -5,11 +5,11 @@ use alloc::vec::Vec;
 use ff::PrimeField;
 use halo2_proofs::plonk;
 use pasta_curves::vesta;
-use rand::{CryptoRng, RngCore};
+use rand::{CryptoRng, RngCore, SeedableRng, rngs::StdRng};
 
 use crate::{
     builder::SpendInfo,
-    circuit::{Circuit, CircuitInstance, Instance, OrchardCircuitVersion, ProvingKey},
+    circuit::{Circuit, CircuitInstance, Instance, OrchardCircuitVersion, ProvingKey, ZsaInstance},
     note::{AssetBase, Rho},
     Note, Proof,
 };
@@ -40,8 +40,9 @@ impl super::Bundle {
     pub fn create_proof<R: RngCore + CryptoRng>(
         &mut self,
         pk: &ProvingKey,
-        rng: R,
+        _rng: R,
     ) -> Result<(), ProverError> {
+        let mut rng = StdRng::seed_from_u64(0xCAFE);
         // If we have no actions, we don't need a proof (and if we still have no actions
         // by the time we come to transaction extraction, we will end up with a `None`
         // bundle that doesn't even hold a proof field).
@@ -133,17 +134,19 @@ impl super::Bundle {
         let proof = if is_zsa {
             #[cfg(feature = "zsa")]
             {
-                let zsa_instances: Vec<Instance> = self
+                let zsa_instances: Vec<ZsaInstance> = self
                     .actions
                     .iter()
                     .map(|action| {
-                        Instance::from_parts(
+                        ZsaInstance::from_parts(
                             self.anchor,
                             action.cv_net.clone(),
                             action.spend.nullifier,
                             action.spend.rk.clone(),
                             action.output.cmx,
-                            self.flags,
+                            self.flags.spends_enabled(),
+                            self.flags.outputs_enabled(),
+                            self.flags.zsa_enabled(),
                         )
                         .ok_or(ProverError::IdentityRk)
                     })
@@ -232,6 +235,7 @@ impl super::Bundle {
                 .map_err(ProverError::ProofFailed)?
         };
 
+        tracing::info!(proof_hex = hex::encode(proof.as_ref()), "PROOF");
         self.zkproof = Some(proof);
 
         Ok(())

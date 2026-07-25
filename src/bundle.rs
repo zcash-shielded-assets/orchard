@@ -611,14 +611,9 @@ impl<T: Authorization, V, D: Domain> Bundle<T, V, D> {
             bundle_version,
         }
     }
-}
-
-/// Default bundle impl for the primary OrchardDomain (vanilla / Ironwood).
-/// ZSA bundles use the `zsa` module.
-impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
 
     /// Returns the list of actions that make up this bundle.
-    pub fn actions(&self) -> &NonEmpty<Action<T::SpendAuth, OrchardDomain>> {
+    pub fn actions(&self) -> &NonEmpty<Action<T::SpendAuth, D>> {
         &self.actions
     }
 
@@ -627,9 +622,7 @@ impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
         &self.flags
     }
 
-    /// Returns the net value moved into or out of the Orchard shielded pool.
-    ///
-    /// This is the sum of Orchard spends minus the sum Orchard outputs.
+    /// Returns the net value moved into or out of the pool.
     pub fn value_balance(&self) -> &V {
         &self.value_balance
     }
@@ -640,46 +633,20 @@ impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
     }
 
     /// Returns the authorization for this bundle.
-    ///
-    /// In the case of a `Bundle<Authorized>`, this is the proof and binding signature.
     pub fn authorization(&self) -> &T {
         &self.authorization
     }
 
-    /// Returns the [`BundleVersion`] (value pool and protocol version) this bundle is encoded
-    /// under.
+    /// Returns the value pool and protocol version this bundle is encoded under.
     pub fn bundle_version(&self) -> BundleVersion {
         self.bundle_version
     }
 
-    /// Returns the byte encoding of this bundle's flags, as defined in [Zcash Protocol Spec §
-    /// 7.1: Transaction Encoding And Consensus][txencoding], under the bundle's own
-    /// [`BundleVersion`].
-    ///
-    /// Unlike [`Flags::to_byte`], this is infallible: a `Bundle` is only ever constructed with
-    /// flags that are representable under its version.
-    ///
-    /// [txencoding]: https://zips.z.cash/protocol/protocol.pdf#txnencoding
+    /// Returns the flag byte encoded for this bundle's version.
     pub fn flag_byte(&self) -> u8 {
         self.flags
             .to_byte(self.bundle_version)
-            .expect("flags are validated against the bundle version at construction")
-    }
-
-    /// Construct a new bundle by applying a transformation that might fail
-    /// to the value balance.
-    pub fn try_map_value_balance<V0, E, F: FnOnce(V) -> Result<V0, E>>(
-        self,
-        f: F,
-    ) -> Result<Bundle<T, V0, OrchardDomain>, E> {
-        Ok(Bundle {
-            actions: self.actions,
-            flags: self.flags,
-            value_balance: f(self.value_balance)?,
-            anchor: self.anchor,
-            authorization: self.authorization,
-            bundle_version: self.bundle_version,
-        })
+            .expect("Bundle flags must be representable in their own version")
     }
 
     /// Transitions this bundle from one authorization state to another.
@@ -688,7 +655,7 @@ impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
         context: &mut R,
         mut spend_auth: impl FnMut(&mut R, &T, T::SpendAuth) -> U::SpendAuth,
         step: impl FnOnce(&mut R, T) -> U,
-    ) -> Bundle<U, V, OrchardDomain> {
+    ) -> Bundle<U, V, D> {
         let authorization = self.authorization;
         Bundle {
             actions: self
@@ -702,13 +669,14 @@ impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
         }
     }
 
-    /// Transitions this bundle from one authorization state to another.
+    /// Transitions this bundle from one authorization state to another, with
+    /// fallible closures.
     pub fn try_map_authorization<R, U: Authorization, E>(
         self,
         context: &mut R,
         mut spend_auth: impl FnMut(&mut R, &T, T::SpendAuth) -> Result<U::SpendAuth, E>,
         step: impl FnOnce(&mut R, T) -> Result<U, E>,
-    ) -> Result<Bundle<U, V, OrchardDomain>, E> {
+    ) -> Result<Bundle<U, V, D>, E> {
         let authorization = self.authorization;
         let new_actions = self
             .actions
@@ -722,6 +690,27 @@ impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
             value_balance: self.value_balance,
             anchor: self.anchor,
             authorization: step(context, authorization)?,
+            bundle_version: self.bundle_version,
+        })
+    }
+}
+
+/// Default bundle impl for the primary OrchardDomain (vanilla / Ironwood).
+/// ZSA bundles use the `zsa` module.
+impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
+
+    /// Construct a new bundle by applying a transformation that might fail
+    /// to the value balance.
+    pub fn try_map_value_balance<V0, E, F: FnOnce(V) -> Result<V0, E>>(
+        self,
+        f: F,
+    ) -> Result<Bundle<T, V0, OrchardDomain>, E> {
+        Ok(Bundle {
+            actions: self.actions,
+            flags: self.flags,
+            value_balance: f(self.value_balance)?,
+            anchor: self.anchor,
+            authorization: self.authorization,
             bundle_version: self.bundle_version,
         })
     }
