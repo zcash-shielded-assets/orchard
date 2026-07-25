@@ -54,6 +54,16 @@ impl<D: Domain> super::Bundle<D> {
             .sum::<ValueCommitment>()
             - ValueCommitment::derive(self.value_sum, ValueCommitTrapdoor::zero()))
         .into_bvk();
+        #[cfg(feature = "tracing")]
+        {
+            let vs: i64 = i64::try_from(self.value_sum).unwrap_or(0);
+            tracing::info!(
+                "finalize_io: value_sum={} n_actions={} n_rcvs={}",
+                vs,
+                self.actions.len(),
+                rcvs.len(),
+            );
+        }
         if redpallas::VerificationKey::from(&bsk) != bvk {
             return Err(IoFinalizerError::ValueCommitMismatch);
         }
