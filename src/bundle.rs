@@ -862,6 +862,28 @@ impl<T: Authorization, V: Copy + Into<i64>> Bundle<T, V, OrchardDomain> {
     }
 }
 
+#[cfg(feature = "zsa")]
+impl<T: Authorization, V: Copy + Into<i64>> Bundle<T, V, crate::zsa::OrchardZSADomain> {
+    /// Computes this ZSA bundle's transaction-ID commitment component,
+    /// using the 612-byte ZSA ciphertext layout with correct asset/memo indices.
+    pub fn commitment(&self, tx_version: TxVersion) -> Result<BundleCommitment, CommitmentError> {
+        use crate::bundle::commitments::hash_bundle_txid_data_zsa;
+        hash_bundle_txid_data_zsa(self, tx_version).map(BundleCommitment)
+    }
+}
+
+#[cfg(feature = "zsa")]
+impl<V> Bundle<Authorized, V, crate::zsa::OrchardZSADomain> {
+    /// Computes the authorizing commitment for this ZSA bundle (proof + binding sig).
+    pub fn authorizing_commitment(
+        &self,
+        tx_version: TxVersion,
+    ) -> Result<BundleAuthorizingCommitment, CommitmentError> {
+        crate::bundle::commitments::hash_bundle_auth_data_zsa(self, tx_version)
+            .map(BundleAuthorizingCommitment)
+    }
+}
+
 /// Marker type for a bundle that contains no authorizing data.
 #[derive(Clone, Debug)]
 pub struct EffectsOnly;

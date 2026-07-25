@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use ff::PrimeField;
 use incrementalmerkletree::Hashable;
 use pasta_curves::pallas;
-use zcash_note_encryption::{note_bytes::NoteBytes, OutgoingCipherKey};
+use zcash_note_encryption::{note_bytes::NoteBytes, Domain, OutgoingCipherKey};
 use zip32::ChildIndex;
 
 use super::{Action, Bundle, Output, Spend, Zip32Derivation};
@@ -23,14 +23,14 @@ use crate::{
     Address, Anchor, Proof, NOTE_COMMITMENT_TREE_DEPTH,
 };
 
-impl Bundle {
+impl<D: Domain> Bundle<D> {
     /// Parses a PCZT bundle from its component parts.
     ///
     /// See [`BundleVersion`] for the choice of `bundle_version`.
     ///
     /// `value_sum` is represented as `(magnitude, is_negative)`.
     pub fn parse(
-        actions: Vec<Action>,
+        actions: Vec<Action<D>>,
         flags: u8,
         bundle_version: BundleVersion,
         value_sum: (u64, bool),
@@ -83,12 +83,12 @@ impl Bundle {
     }
 }
 
-impl Action {
+impl<D: Domain> Action<D> {
     /// Parses a PCZT action from its component parts.
     pub fn parse(
         cv_net: [u8; 32],
         spend: Spend,
-        output: Output,
+        output: Output<D>,
         rcv: Option<[u8; 32]>,
     ) -> Result<Self, ParseError> {
         let cv_net = ValueCommitment::from_bytes(&cv_net)
@@ -222,7 +222,7 @@ impl Spend {
     }
 }
 
-impl Output {
+impl<D: Domain> Output<D> {
     /// Parses a PCZT output from its component parts, and the corresponding `Spend`'s
     /// nullifier.
     #[allow(clippy::too_many_arguments)]
@@ -245,9 +245,9 @@ impl Output {
             .into_option()
             .ok_or(ParseError::InvalidExtractedNoteCommitment)?;
 
-        let encrypted_note = TransmittedNoteCiphertext::<crate::note_encryption::OrchardDomain> {
+        let encrypted_note = TransmittedNoteCiphertext::<D> {
             epk_bytes: ephemeral_key,
-            enc_ciphertext: zcash_note_encryption::note_bytes::NoteBytesData::<580>::from_slice(&enc_ciphertext)
+            enc_ciphertext: <D::NoteCiphertextBytes as NoteBytes>::from_slice(&enc_ciphertext)
                 .ok_or(ParseError::InvalidEncCiphertext)?,
             out_ciphertext: out_ciphertext
                 .as_slice()

@@ -169,6 +169,54 @@ pub(crate) fn hash_bundle_txid_data<A: Authorization, V: Copy + Into<i64>>(
     Ok(h.finalize())
 }
 
+/// Computes the transaction-id commitment for a ZSA (Nu7) Orchard bundle.
+///
+/// This is the same structure as [`hash_bundle_txid_data`] but uses the
+/// 612-byte ZSA ciphertext layout where the 32-byte encrypted asset (bytes
+/// 52..84) is included in the compact portion and the memo is shifted to
+/// bytes 84..596.
+pub(crate) fn hash_bundle_txid_data_zsa<A: Authorization, V: Copy + Into<i64>>(
+    bundle: &Bundle<A, V, crate::zsa::OrchardZSADomain>,
+    tx_version: TxVersion,
+) -> Result<Blake2bHash, CommitmentError> {
+    let format = bundle
+        .bundle_version()
+        .value_pool()
+        .commitment_format(tx_version)?;
+    let personalizations = format.personalizations();
+    let mut h = hasher(personalizations.bundle);
+    let mut ch = hasher(personalizations.actions_compact);
+    let mut mh = hasher(personalizations.actions_memos);
+    let mut nh = hasher(personalizations.actions_noncompact);
+
+    for action in bundle.actions().iter() {
+        ch.update(&action.nullifier().to_bytes());
+        ch.update(&action.cmx().to_bytes());
+        ch.update(&action.encrypted_note().epk_bytes);
+        // ZSA: compact portion includes the 32-byte asset (84 bytes total)
+        ch.update(&action.encrypted_note().enc_ciphertext.as_ref()[..84]);
+
+        // ZSA: memo is at offset 84 (after the asset), 512 bytes
+        mh.update(&action.encrypted_note().enc_ciphertext.as_ref()[84..596]);
+
+        nh.update(&action.cv_net().to_bytes());
+        nh.update(&<[u8; 32]>::from(action.rk()));
+        // ZSA: tag is at offset 596 (after memo), 16 bytes
+        nh.update(&action.encrypted_note().enc_ciphertext.as_ref()[596..]);
+        nh.update(&action.encrypted_note().out_ciphertext);
+    }
+
+    h.update(ch.finalize().as_bytes());
+    h.update(mh.finalize().as_bytes());
+    h.update(nh.finalize().as_bytes());
+    h.update(&[bundle.flag_byte()]);
+    h.update(&(*bundle.value_balance()).into().to_le_bytes());
+    if format.includes_anchor_in_txid_digest() {
+        h.update(&bundle.anchor().to_bytes());
+    }
+    Ok(h.finalize())
+}
+
 /// Construct the commitment for the absent bundle as defined in
 /// [ZIP-244: Transaction Identifier Non-Malleability][zip244]
 ///
@@ -193,6 +241,31 @@ pub fn hash_bundle_txid_empty(
 /// [zip244]: https://zips.z.cash/zip-0244
 pub(crate) fn hash_bundle_auth_data<V>(
     bundle: &Bundle<Authorized, V>,
+    tx_version: TxVersion,
+) -> Result<Blake2bHash, CommitmentError> {
+    let format = bundle
+        .bundle_version()
+        .value_pool()
+        .commitment_format(tx_version)?;
+    let mut h = hasher(format.personalizations().auth);
+    h.update(bundle.authorization().proof().as_ref());
+    for action in bundle.actions().iter() {
+        h.update(&<[u8; 64]>::from(action.authorization()));
+    }
+    h.update(&<[u8; 64]>::from(
+        bundle.authorization().binding_signature(),
+    ));
+    if format.includes_anchor_in_authorizing_digest() {
+        h.update(&bundle.anchor().to_bytes());
+    }
+    Ok(h.finalize())
+}
+
+/// Construct the authorizing-data commitment for a ZSA bundle.
+/// Same structure as [`hash_bundle_auth_data`] — domain-independent
+/// (proof + binding sig + optional anchor, no ciphertext indices).
+pub(crate) fn hash_bundle_auth_data_zsa<V>(
+    bundle: &Bundle<Authorized, V, crate::zsa::OrchardZSADomain>,
     tx_version: TxVersion,
 ) -> Result<Blake2bHash, CommitmentError> {
     let format = bundle
