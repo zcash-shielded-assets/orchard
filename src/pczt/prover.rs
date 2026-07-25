@@ -3,6 +3,7 @@ use core::fmt;
 use alloc::vec::Vec;
 
 use ff::PrimeField;
+use zcash_note_encryption::Domain;
 use halo2_proofs::plonk;
 use pasta_curves::vesta;
 use rand::{CryptoRng, RngCore, SeedableRng, rngs::StdRng};
@@ -14,7 +15,7 @@ use crate::{
     Note, Proof,
 };
 
-impl super::Bundle {
+impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
     /// Adds a proof to this PCZT bundle.
     ///
     /// The Action circuits are built for `pk`'s circuit version; the caller selects the

@@ -7,7 +7,7 @@ use crate::{
     Note,
 };
 
-impl super::Bundle {
+impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
     /// If this bundle disables cross-address transfers, verifies that every action's
     /// output is addressed to the same expanded receiver (`(g_d, pk_d)`) as its spent
     /// note. This is a no-op for bundles that permit cross-address transfers.

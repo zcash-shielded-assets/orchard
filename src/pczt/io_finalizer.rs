@@ -4,6 +4,8 @@ use alloc::vec::Vec;
 
 use rand::{CryptoRng, RngCore};
 
+use zcash_note_encryption::Domain;
+
 use crate::{
     keys::SpendAuthorizingKey,
     primitives::redpallas,
@@ -12,7 +14,7 @@ use crate::{
 
 use super::{SignerError, VerifyError};
 
-impl super::Bundle {
+impl<D: Domain> super::Bundle<D> {
     /// Finalizes the IO for this bundle.
     ///
     /// If the bundle disables cross-address transfers, the structural restriction is

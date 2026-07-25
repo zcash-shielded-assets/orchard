@@ -7,7 +7,7 @@ use crate::{
     primitives::redpallas::{self, SpendAuth},
 };
 
-impl super::Action {
+impl<D: zcash_note_encryption::Domain> super::Action<D> {
     /// Signs the Orchard spend with the given spend authorizing key.
     ///
     /// It is the caller's responsibility to perform any semantic validity checks on the

@@ -587,7 +587,6 @@ impl Note {
 }
 
 /// An encrypted note.
-#[derive(Clone)]
 pub struct TransmittedNoteCiphertext<D: zcash_note_encryption::Domain> {
     /// The serialization of the ephemeral public key
     pub epk_bytes: [u8; 32],
@@ -596,6 +595,22 @@ pub struct TransmittedNoteCiphertext<D: zcash_note_encryption::Domain> {
     /// An encrypted value that allows the holder of the outgoing cipher
     /// key for the note to recover the note plaintext.
     pub out_ciphertext: [u8; 80],
+}
+
+// Manual `Clone` (instead of `#[derive]`) so it bounds `D::NoteCiphertextBytes: Clone`
+// rather than the too-strict `D: Clone` a derive would add; this lets code generic over the
+// note-encryption domain clone a `TransmittedNoteCiphertext<D>`.
+impl<D: zcash_note_encryption::Domain> Clone for TransmittedNoteCiphertext<D>
+where
+    D::NoteCiphertextBytes: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            epk_bytes: self.epk_bytes,
+            enc_ciphertext: self.enc_ciphertext.clone(),
+            out_ciphertext: self.out_ciphertext,
+        }
+    }
 }
 
 impl<D: zcash_note_encryption::Domain> fmt::Debug for TransmittedNoteCiphertext<D> {
