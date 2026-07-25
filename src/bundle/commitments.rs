@@ -12,6 +12,14 @@ const ZCASH_ORCHARD_V6_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOrchardH_v6";
 const ZCASH_ORCHARD_ACTIONS_COMPACT_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOrcActCHash";
 const ZCASH_ORCHARD_ACTIONS_MEMOS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOrcActMHash";
 const ZCASH_ORCHARD_ACTIONS_NONCOMPACT_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOrcActNHash";
+// ZIP-246 (OrchardZSA / v6) digest personalizations. These must stay byte-identical
+// to the reference implementation (orchard 0.14 `orchard_primitives_zsa.rs`): the ZSA
+// txid digest wraps the actions in an action-group layer and uses V6-specific
+// compact/non-compact strings, while the top-level bundle string stays `ZTxIdOrchardHash`.
+const ZCASH_ORCHARD_ACTION_GROUPS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOrcActGHash";
+const ZCASH_ORCHARD_ACTIONS_COMPACT_HASH_PERSONALIZATION_V6: &[u8; 16] = b"ZTxId6OActC_Hash";
+const ZCASH_ORCHARD_ACTIONS_NONCOMPACT_HASH_PERSONALIZATION_V6: &[u8; 16] = b"ZTxId6OActN_Hash";
+const ZCASH_ORCHARD_ZSA_BURN_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOrcBurnHash";
 const ZCASH_ORCHARD_V5_SIGS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxAuthOrchaHash";
 const ZCASH_ORCHARD_V6_SIGS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxAuthOrchaH_v6";
 const ZCASH_IRONWOOD_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdIronwd_H_v6";
@@ -179,41 +187,58 @@ pub(crate) fn hash_bundle_txid_data_zsa<A: Authorization, V: Copy + Into<i64>>(
     bundle: &Bundle<A, V, crate::zsa::OrchardZSADomain>,
     tx_version: TxVersion,
 ) -> Result<Blake2bHash, CommitmentError> {
-    let format = bundle
+    // Validate that this bundle's pool is representable in `tx_version` (OrchardZSA => v6).
+    // ZSA bundles always use the fixed ZIP-246 personalizations below, so the returned
+    // format is only consulted for its error side effect.
+    let _ = bundle
         .bundle_version()
         .value_pool()
         .commitment_format(tx_version)?;
-    let personalizations = format.personalizations();
-    let mut h = hasher(personalizations.bundle);
-    let mut ch = hasher(personalizations.actions_compact);
-    let mut mh = hasher(personalizations.actions_memos);
-    let mut nh = hasher(personalizations.actions_noncompact);
+
+    // ZIP-246 digest: the per-action hashes are folded into an intermediate "action
+    // group" hash (together with flags, anchor, expiry and the burn set), which is then
+    // committed under the top-level bundle personalization along with the value balance.
+    // This matches orchard 0.14's `OrchardZSA::hash_bundle_txid_data` byte-for-byte; the
+    // server rejects the transaction's signatures if this digest diverges.
+    let mut h = hasher(ZCASH_ORCHARD_V5_HASH_PERSONALIZATION);
+    let mut agh = hasher(ZCASH_ORCHARD_ACTION_GROUPS_HASH_PERSONALIZATION);
+
+    let mut ch = hasher(ZCASH_ORCHARD_ACTIONS_COMPACT_HASH_PERSONALIZATION_V6);
+    let mut mh = hasher(ZCASH_ORCHARD_ACTIONS_MEMOS_HASH_PERSONALIZATION);
+    let mut nh = hasher(ZCASH_ORCHARD_ACTIONS_NONCOMPACT_HASH_PERSONALIZATION_V6);
 
     for action in bundle.actions().iter() {
         ch.update(&action.nullifier().to_bytes());
         ch.update(&action.cmx().to_bytes());
         ch.update(&action.encrypted_note().epk_bytes);
-        // ZSA: compact portion includes the 32-byte asset (84 bytes total)
+        // ZSA: compact portion includes the 32-byte asset (84 bytes total).
         ch.update(&action.encrypted_note().enc_ciphertext.as_ref()[..84]);
 
-        // ZSA: memo is at offset 84 (after the asset), 512 bytes
+        // ZSA: memo is at offset 84 (after the asset), 512 bytes.
         mh.update(&action.encrypted_note().enc_ciphertext.as_ref()[84..596]);
 
         nh.update(&action.cv_net().to_bytes());
         nh.update(&<[u8; 32]>::from(action.rk()));
-        // ZSA: tag is at offset 596 (after memo), 16 bytes
+        // ZSA: tag is at offset 596 (after memo), 16 bytes.
         nh.update(&action.encrypted_note().enc_ciphertext.as_ref()[596..]);
         nh.update(&action.encrypted_note().out_ciphertext);
     }
 
-    h.update(ch.finalize().as_bytes());
-    h.update(mh.finalize().as_bytes());
-    h.update(nh.finalize().as_bytes());
-    h.update(&[bundle.flag_byte()]);
+    agh.update(ch.finalize().as_bytes());
+    agh.update(mh.finalize().as_bytes());
+    agh.update(nh.finalize().as_bytes());
+
+    agh.update(&[bundle.flag_byte()]);
+    agh.update(&bundle.anchor().to_bytes());
+    // OrchardZSA fixes the action-group expiry height to 0 (no expiry).
+    agh.update(&0u32.to_le_bytes());
+
+    // Burn set. zkool O2O transfers carry no burn, so this is the empty-input hash.
+    let burn_hasher = hasher(ZCASH_ORCHARD_ZSA_BURN_HASH_PERSONALIZATION);
+    agh.update(burn_hasher.finalize().as_bytes());
+
+    h.update(agh.finalize().as_bytes());
     h.update(&(*bundle.value_balance()).into().to_le_bytes());
-    if format.includes_anchor_in_txid_digest() {
-        h.update(&bundle.anchor().to_bytes());
-    }
     Ok(h.finalize())
 }
 
