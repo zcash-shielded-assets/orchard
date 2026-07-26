@@ -1755,10 +1755,6 @@ impl Proof {
         instances: &[I],
         mut rng: impl RngCore,
     ) -> Result<Self, plonk::Error> {
-        tracing::info!(
-            actions = circuits.len(),
-            "Proof::create_zsa: creating ZSA proof"
-        );
         if instances.iter().any(|i| i.cross_address_disabled())
             && !pk.supports_cross_address_restriction()
         {

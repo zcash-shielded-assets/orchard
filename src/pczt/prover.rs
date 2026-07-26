@@ -13,11 +13,7 @@ use crate::{
 };
 
 #[cfg(feature = "zsa")]
-use {
-    crate::circuit::{CircuitInstance, ZsaInstance},
-    ff::PrimeField,
-    pasta_curves::vesta,
-};
+use crate::circuit::ZsaInstance;
 
 impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
     /// Adds a proof to this PCZT bundle.
@@ -115,27 +111,6 @@ impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
                 .into_option()
                 .ok_or(ProverError::InvalidOutputNote)?;
 
-                // -- TEMP INSTRUMENTATION: do the reconstructed notes match the
-                // commitments the builder actually committed to? --
-                {
-                    let nf_ok = spend.note.nullifier(&spend.fvk) == action.spend.nullifier;
-                    let cmx_ok =
-                        crate::note::ExtractedNoteCommitment::from(output_note.commitment())
-                            == action.output.cmx;
-                    std::eprintln!(
-                        "PROVER-DUMP: nf_ok={} cmx_ok={} split={} spend(v={} zec={} nv={:?}) output(v={} zec={} nv={:?})",
-                        nf_ok,
-                        cmx_ok,
-                        spend.split_flag,
-                        spend.note.value().inner(),
-                        bool::from(spend.note.asset().is_zatoshi()),
-                        action.spend.note_version,
-                        output_note.value().inner(),
-                        bool::from(output_note.asset().is_zatoshi()),
-                        action.output.note_version,
-                    );
-                }
-
                 let alpha = action
                     .spend
                     .alpha
@@ -151,12 +126,6 @@ impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
             .collect::<Result<Vec<_>, ProverError>>()?;
 
         let is_zsa = pk.circuit_version() == OrchardCircuitVersion::ZsaFixed;
-        tracing::info!(
-            actions = self.actions.len(),
-            pk_version = ?pk.circuit_version(),
-            is_zsa,
-            "creating orchard proof"
-        );
 
         let proof = if is_zsa {
             #[cfg(feature = "zsa")]
@@ -178,27 +147,6 @@ impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
                         .ok_or(ProverError::IdentityRk)
                     })
                     .collect::<Result<Vec<_>, ProverError>>()?;
-
-                for (i, inst) in zsa_instances.iter().enumerate() {
-                    let h2i = inst.to_halo2_instance();
-                    let dump_field = |f: &vesta::Scalar| {
-                        hex::encode(f.to_repr().as_ref())
-                    };
-                    tracing::info!(
-                        action = i,
-                        anchor = dump_field(&h2i[0][0]),
-                        cv_net_x = dump_field(&h2i[0][1]),
-                        cv_net_y = dump_field(&h2i[0][2]),
-                        nf_old = dump_field(&h2i[0][3]),
-                        rk_x = dump_field(&h2i[0][4]),
-                        rk_y = dump_field(&h2i[0][5]),
-                        cmx = dump_field(&h2i[0][6]),
-                        enable_spend = ?h2i[0][7],
-                        enable_output = ?h2i[0][8],
-                        enable_zsa = ?h2i[0][9],
-                        "ZSA instance dump"
-                    );
-                }
 
                 let zsa_circuits: Vec<crate::zsa::circuit::ZsaCircuit> = self
                     .actions
@@ -272,7 +220,6 @@ impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
             proof
         };
 
-        tracing::info!(proof_hex = hex::encode(proof.as_ref()), "PROOF");
         self.zkproof = Some(proof);
 
         Ok(())

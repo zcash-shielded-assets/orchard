@@ -120,11 +120,6 @@ impl<'a> BatchValidator<'a> {
         sighash: [u8; 32],
         enable_zsa: bool,
     ) {
-        tracing::info!(
-            actions = bundle.actions().len(),
-            enable_zsa,
-            "add_bundle_zsa: verifying ZSA bundle"
-        );
         for action in bundle.actions().iter() {
             self.signatures.push(BundleSignature {
                 signature: action
