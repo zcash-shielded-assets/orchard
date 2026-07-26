@@ -36,7 +36,7 @@ use halo2_gadgets::{
     },
 };
 
-type NoteCommitPiece<Lookup: PallasLookupRangeCheck = LookupRangeCheckConfig<pallas::Base, 10>> = MessagePiece<
+type NoteCommitPiece<Lookup = LookupRangeCheckConfig<pallas::Base, 10>> = MessagePiece<
     pallas::Affine,
     SinsemillaChip<OrchardHashDomains, OrchardCommitDomains, OrchardFixedBases, Lookup>,
     10,

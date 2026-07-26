@@ -3,10 +3,9 @@ use core::fmt;
 use alloc::vec::Vec;
 
 use ff::PrimeField;
-use zcash_note_encryption::Domain;
 use halo2_proofs::plonk;
 use pasta_curves::vesta;
-use rand::{CryptoRng, RngCore, SeedableRng, rngs::StdRng};
+use rand::{CryptoRng, RngCore};
 
 use crate::{
     builder::SpendInfo,
@@ -41,9 +40,8 @@ impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
     pub fn create_proof<R: RngCore + CryptoRng>(
         &mut self,
         pk: &ProvingKey,
-        _rng: R,
+        rng: R,
     ) -> Result<(), ProverError> {
-        let mut rng = StdRng::seed_from_u64(0xCAFE);
         // If we have no actions, we don't need a proof (and if we still have no actions
         // by the time we come to transaction extraction, we will end up with a `None`
         // bundle that doesn't even hold a proof field).
@@ -79,13 +77,14 @@ impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
                         .recipient
                         .ok_or(ProverError::MissingRecipient)?,
                     action.spend.value.ok_or(ProverError::MissingValue)?,
-                    AssetBase::zatoshi(),
+                    action.spend.asset.unwrap_or_else(AssetBase::zatoshi),
                     action.spend.rho.ok_or(ProverError::MissingRho)?,
                     action.spend.rseed.ok_or(ProverError::MissingRandomSeed)?,
                     action.spend.note_version,
                 )
                 .into_option()
-                .ok_or(ProverError::InvalidSpendNote)?;
+                .ok_or(ProverError::InvalidSpendNote)?
+                .with_rseed_split_note(action.spend.rseed_split_note);
 
                 let merkle_path = action
                     .spend
@@ -93,8 +92,9 @@ impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
                     .clone()
                     .ok_or(ProverError::MissingWitness)?;
 
-                let spend =
+                let mut spend =
                     SpendInfo::new(fvk, note, merkle_path).ok_or(ProverError::WrongFvkForNote)?;
+                spend.split_flag = action.spend.rseed_split_note.is_some();
 
                 let output_note = Note::from_parts(
                     action
@@ -102,13 +102,34 @@ impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
                         .recipient
                         .ok_or(ProverError::MissingRecipient)?,
                     action.output.value.ok_or(ProverError::MissingValue)?,
-                    AssetBase::zatoshi(),
+                    action.output.asset.unwrap_or_else(AssetBase::zatoshi),
                     Rho::from_nf_old(action.spend.nullifier),
                     action.output.rseed.ok_or(ProverError::MissingRandomSeed)?,
                     action.output.note_version,
                 )
                 .into_option()
                 .ok_or(ProverError::InvalidOutputNote)?;
+
+                // -- TEMP INSTRUMENTATION: do the reconstructed notes match the
+                // commitments the builder actually committed to? --
+                {
+                    let nf_ok = spend.note.nullifier(&spend.fvk) == action.spend.nullifier;
+                    let cmx_ok =
+                        crate::note::ExtractedNoteCommitment::from(output_note.commitment())
+                            == action.output.cmx;
+                    std::eprintln!(
+                        "PROVER-DUMP: nf_ok={} cmx_ok={} split={} spend(v={} zec={} nv={:?}) output(v={} zec={} nv={:?})",
+                        nf_ok,
+                        cmx_ok,
+                        spend.split_flag,
+                        spend.note.value().inner(),
+                        bool::from(spend.note.asset().is_zatoshi()),
+                        action.spend.note_version,
+                        output_note.value().inner(),
+                        bool::from(output_note.asset().is_zatoshi()),
+                        action.output.note_version,
+                    );
+                }
 
                 let alpha = action
                     .spend
@@ -183,19 +204,21 @@ impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
                         let note = Note::from_parts(
                             action.spend.recipient.ok_or(ProverError::MissingRecipient)?,
                             action.spend.value.ok_or(ProverError::MissingValue)?,
-                            AssetBase::zatoshi(),
+                            action.spend.asset.unwrap_or_else(AssetBase::zatoshi),
                             action.spend.rho.ok_or(ProverError::MissingRho)?,
                             action.spend.rseed.ok_or(ProverError::MissingRandomSeed)?,
                             action.spend.note_version,
-                        ).into_option().ok_or(ProverError::InvalidSpendNote)?;
+                        ).into_option().ok_or(ProverError::InvalidSpendNote)?
+                            .with_rseed_split_note(action.spend.rseed_split_note);
                         let merkle_path = action.spend.witness.clone()
                             .ok_or(ProverError::MissingWitness)?;
-                        let spend = SpendInfo::new(fvk, note, merkle_path)
+                        let mut spend = SpendInfo::new(fvk, note, merkle_path)
                             .ok_or(ProverError::WrongFvkForNote)?;
+                        spend.split_flag = action.spend.rseed_split_note.is_some();
                         let output_note = Note::from_parts(
                             action.output.recipient.ok_or(ProverError::MissingRecipient)?,
                             action.output.value.ok_or(ProverError::MissingValue)?,
-                            AssetBase::zatoshi(),
+                            action.output.asset.unwrap_or_else(AssetBase::zatoshi),
                             Rho::from_nf_old(action.spend.nullifier),
                             action.output.rseed.ok_or(ProverError::MissingRandomSeed)?,
                             action.output.note_version,
@@ -207,8 +230,12 @@ impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
                         ).ok_or(ProverError::RhoMismatch)
                     })
                     .collect::<Result<Vec<_>, ProverError>>()?;
-                Proof::create_zsa(pk, &zsa_circuits, &zsa_instances, rng)
-                    .map_err(ProverError::ProofFailed)?
+                let proof = Proof::create_zsa(pk, &zsa_circuits, &zsa_instances, rng)
+                    .map_err(ProverError::ProofFailed)?;
+                proof
+                    .verify(&pk.verifying_key(), &zsa_instances)
+                    .map_err(ProverError::ProofFailed)?;
+                proof
             }
             #[cfg(not(feature = "zsa"))]
             {
@@ -232,8 +259,12 @@ impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
                     .ok_or(ProverError::IdentityRk)
                 })
                 .collect::<Result<Vec<_>, ProverError>>()?;
-            Proof::create(pk, &circuits, &instances, rng)
-                .map_err(ProverError::ProofFailed)?
+            let proof =
+                Proof::create(pk, &circuits, &instances, rng).map_err(ProverError::ProofFailed)?;
+            proof
+                .verify(&pk.verifying_key(), &instances)
+                .map_err(ProverError::ProofFailed)?;
+            proof
         };
 
         tracing::info!(proof_hex = hex::encode(proof.as_ref()), "PROOF");

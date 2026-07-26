@@ -183,12 +183,13 @@ impl BundleVersion {
 
     /// The [`NoteVersion`] associated with this bundle version.
     ///
-    /// Orchard pools use V2 note plaintexts, and Ironwood pools use V3 note
-    /// plaintexts.
+    /// Orchard pools use V2 note plaintexts before NU7 and the asset-carrying
+    /// V3 ZSA plaintext at NU7. Ironwood pools use V3 note plaintexts.
     pub fn note_version(&self) -> NoteVersion {
-        match self.value_pool {
-            ValuePool::Orchard => NoteVersion::V2,
-            ValuePool::Ironwood => NoteVersion::V3,
+        match (self.value_pool, self.protocol_version) {
+            (ValuePool::Orchard, ProtocolVersion::ZSA) => NoteVersion::V3ZSA,
+            (ValuePool::Orchard, _) => NoteVersion::V2,
+            (ValuePool::Ironwood, _) => NoteVersion::V3,
         }
     }
 

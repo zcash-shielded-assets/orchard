@@ -338,6 +338,7 @@ impl Note {
     pub(crate) fn new(
         recipient: Address,
         value: NoteValue,
+        asset: AssetBase,
         rho: Rho,
         version: NoteVersion,
         mut rng: impl RngCore,
@@ -346,7 +347,7 @@ impl Note {
             let note = Note::from_parts(
                 recipient,
                 value,
-                AssetBase::zatoshi(),
+                asset,
                 rho,
                 RandomSeed::random(&mut rng, &rho),
                 version,
@@ -422,6 +423,7 @@ impl Note {
         let note = Note::new(
             recipient,
             NoteValue::ZERO,
+            AssetBase::zatoshi(),
             rho.unwrap_or_else(|| Rho::from_nf_old(Nullifier::dummy(rng))),
             note_version,
             rng,
@@ -481,10 +483,21 @@ impl Note {
     pub(crate) fn create_split_note(self, rng: &mut impl RngCore) -> Self {
         assert!(bool::from(!self.asset().is_zatoshi()));
         Note {
-            value: NoteValue::ZERO,
             rseed_split_note: CtOption::new(RandomSeed::random(rng, &self.rho()), 1u8.into()),
             ..self
         }
+    }
+
+    pub(crate) fn rseed_split_note(&self) -> Option<RandomSeed> {
+        self.rseed_split_note.into_option()
+    }
+
+    pub(crate) fn with_rseed_split_note(mut self, rseed_split_note: Option<RandomSeed>) -> Self {
+        self.rseed_split_note = match rseed_split_note {
+            Some(rseed) => CtOption::new(rseed, 1u8.into()),
+            None => CtOption::new(self.rseed, 0u8.into()),
+        };
+        self
     }
 
     /// Returns the version of this note.
@@ -582,6 +595,7 @@ impl Note {
             self.rho().0,
             self.psi_nf(),
             self.commitment(),
+            bool::from(self.rseed_split_note.is_some()),
         )
     }
 }

@@ -172,7 +172,7 @@ pub enum BuildError {
     /// Cross-address transfers are disabled for the bundle being constructed, and an
     /// output is not a wallet-controlled change output.
     CrossAddressDisabled,
-    /// A supplied output or change output has a note version that is
+    /// A supplied spend, output, or change output has a note version that is
     /// inconsistent with the bundle version.
     InvalidNoteVersion,
     /// The builder's flags cannot be encoded under its [`BundleVersion`].
@@ -214,7 +214,7 @@ impl fmt::Display for BuildError {
                  be a wallet-controlled change output.",
             ),
             InvalidNoteVersion => f.write_str(
-                "A supplied output or change output has a note version that does not match \
+                "A supplied spend, output, or change output has a note version that does not match \
                  the bundle version.",
             ),
             UnrepresentableFlags => f.write_str(
@@ -250,6 +250,8 @@ impl From<value::BalanceError> for BuildError {
 pub enum SpendError {
     /// Spends aren't enabled for this builder.
     SpendsDisabled,
+    /// The note version is inconsistent with the bundle version.
+    InvalidNoteVersion,
     /// The anchor provided to this builder doesn't match the merkle path used to add a spend.
     AnchorMismatch,
     /// The full viewing key provided didn't match the note provided
@@ -261,6 +263,7 @@ impl fmt::Display for SpendError {
         use SpendError::*;
         f.write_str(match self {
             SpendsDisabled => "Spends are not enabled for this builder",
+            InvalidNoteVersion => "The note version does not match the bundle version",
             AnchorMismatch => "All anchors must be equal.",
             FvkMismatch => "FullViewingKey does not correspond to the given note",
         })
@@ -422,6 +425,7 @@ impl SpendInfo {
             value: Some(self.note.value()),
             rho: Some(self.note.rho()),
             rseed: Some(*self.note.rseed()),
+            rseed_split_note: self.note.rseed_split_note(),
             note_version: self.note.version(),
             fvk: Some(self.fvk),
             witness: Some(self.merkle_path),
@@ -429,6 +433,7 @@ impl SpendInfo {
             zip32_derivation: None,
             dummy_sk: self.dummy_sk,
             proprietary: BTreeMap::new(),
+            asset: Some(self.note.asset()),
         }
     }
 }
@@ -569,7 +574,14 @@ impl<D: DomainExt> OutputInfo<D> {
         mut rng: impl RngCore,
     ) -> (Note, ExtractedNoteCommitment, TransmittedNoteCiphertext<D>) {
         let rho = Rho::from_nf_old(nf_old);
-        let note = Note::new(self.recipient, self.value, rho, self.note_version, &mut rng);
+        let note = Note::new(
+            self.recipient,
+            self.value,
+            self.asset,
+            rho,
+            self.note_version,
+            &mut rng,
+        );
         let cm_new = note.commitment();
         let cmx = cm_new.into();
 
@@ -622,6 +634,7 @@ impl<D: DomainExt> OutputInfo<D> {
             zip32_derivation: None,
             user_address: None,
             proprietary: BTreeMap::new(),
+            asset: Some(self.asset),
         }
     }
 }
@@ -706,7 +719,11 @@ impl<D: DomainExt> ActionInfo<D> {
 
     /// Returns the value sum for this action.
     fn value_sum(&self) -> ValueSum {
-        self.spend.note.value() - self.output.value
+        if self.spend.split_flag {
+            NoteValue::ZERO - self.output.value
+        } else {
+            self.spend.note.value() - self.output.value
+        }
     }
 
     /// Builds the action for a given circuit version.
@@ -723,7 +740,11 @@ impl<D: DomainExt> ActionInfo<D> {
         circuit_version: OrchardCircuitVersion,
     ) -> (Action<SigningMetadata, D>, Circuit) {
         let v_net = self.value_sum();
-        let cv_net = ValueCommitment::derive(v_net, self.rcv.clone());
+        let cv_net = ValueCommitment::derive_with_asset(
+            v_net,
+            self.rcv.clone(),
+            self.spend.note.asset(),
+        );
 
         let (nf_old, ak, alpha, rk) = self.spend.build(&mut rng);
         let (note, cmx, encrypted_note) = self.output.build(&cv_net, nf_old, &mut rng);
@@ -756,7 +777,11 @@ impl<D: DomainExt> ActionInfo<D> {
 
     fn build_for_pczt(self, mut rng: impl RngCore) -> crate::pczt::Action<D> {
         let v_net = self.value_sum();
-        let cv_net = ValueCommitment::derive(v_net, self.rcv.clone());
+        let cv_net = ValueCommitment::derive_with_asset(
+            v_net,
+            self.rcv.clone(),
+            self.spend.note.asset(),
+        );
 
         let spend = self.spend.into_pczt(&mut rng);
         let output = self.output.into_pczt(&cv_net, spend.nullifier, &mut rng);
@@ -920,6 +945,9 @@ impl<D: DomainExt> Builder<D> {
     ) -> Result<(), SpendError> {
         if !self.flags.spends_enabled() {
             return Err(SpendError::SpendsDisabled);
+        }
+        if note.version() != self.note_version() {
+            return Err(SpendError::InvalidNoteVersion);
         }
 
         let spend = SpendInfo::new(fvk, note, merkle_path).ok_or(SpendError::FvkMismatch)?;
@@ -1367,7 +1395,10 @@ fn build_bundle<D: DomainExt, B, R: RngCore>(
     if !flags.outputs_enabled() && num_requested_outputs > 0 {
         return Err(BuildError::OutputsDisabled);
     }
-    if outputs
+    if spends
+        .iter()
+        .any(|spend| spend.note.version() != note_version)
+        || outputs
         .iter()
         .any(|output| output.note_version != note_version)
         || changes
@@ -1421,6 +1452,7 @@ fn build_bundle<D: DomainExt, B, R: RngCore>(
             let note = Note::new(
                 output.recipient,
                 NoteValue::ZERO,
+                output.asset,
                 rho,
                 note_version,
                 &mut rng,
@@ -2046,7 +2078,8 @@ mod tests {
     use rand::RngCore;
 
     use super::{
-        bundle, BuildError, Builder, ChangeInfo, MaybeSigned, OutputError, OutputInfo, SpendInfo,
+        bundle, BuildError, Builder, ChangeInfo, MaybeSigned, OutputError, OutputInfo, SpendError,
+        SpendInfo,
     };
     use crate::{
         builder::BundleType,
@@ -2069,11 +2102,49 @@ mod tests {
         note_version: NoteVersion,
     ) -> (Note, MerklePath, Anchor) {
         let rho = Rho::from_nf_old(Nullifier::dummy(rng));
-        let note = Note::new(recipient, value, rho, note_version, &mut *rng);
+        let note = Note::new(
+            recipient,
+            value,
+            AssetBase::zatoshi(),
+            rho,
+            note_version,
+            &mut *rng,
+        );
         let merkle_path = MerklePath::dummy(rng);
         let anchor = merkle_path.root(note.commitment().into());
 
         (note, merkle_path, anchor)
+    }
+
+    #[cfg(feature = "zsa")]
+    #[test]
+    fn zsa_output_commitment_binds_output_asset() {
+        use crate::zsa::OrchardZSADomain;
+
+        let mut rng = OsRng;
+        let fvk = FullViewingKey::from(&SpendingKey::random(&mut rng));
+        let recipient = fvk.address_at(0u32, Scope::External);
+        let asset = AssetBase::random(&mut rng);
+        let output = OutputInfo::<OrchardZSADomain>::new(
+            None,
+            recipient,
+            NoteValue::from_raw(5_000),
+            asset,
+            NoteVersion::V3ZSA,
+            [0u8; 512],
+        );
+        let cv_net = crate::value::ValueCommitment::derive(
+            crate::value::ValueSum::zero(),
+            crate::value::ValueCommitTrapdoor::zero(),
+        );
+
+        let (note, cmx, _) = output.build(&cv_net, Nullifier::dummy(&mut rng), &mut rng);
+
+        assert_eq!(note.asset(), asset);
+        assert_eq!(
+            crate::note::ExtractedNoteCommitment::from(note.commitment()),
+            cmx
+        );
     }
 
     fn transactional(bundle_required: bool) -> BundleType {
@@ -2519,7 +2590,7 @@ mod tests {
     }
 
     #[test]
-    fn builder_note_version_checks_apply_to_outputs_only() {
+    fn builder_note_version_checks_apply_to_all_notes() {
         let mut rng = OsRng;
         let sk = SpendingKey::random(&mut rng);
         let fvk = FullViewingKey::from(&sk);
@@ -2540,7 +2611,10 @@ mod tests {
             anchor,
         )
         .unwrap();
-        assert_eq!(builder.add_spend(fvk.clone(), note, merkle_path), Ok(()));
+        assert_eq!(
+            builder.add_spend(fvk.clone(), note, merkle_path),
+            Err(SpendError::InvalidNoteVersion)
+        );
 
         let (note, merkle_path, anchor) = note_with_path(
             &mut rng,
@@ -2549,17 +2623,19 @@ mod tests {
             mismatched_note_version,
         );
         let spend = SpendInfo::new(fvk.clone(), note, merkle_path).unwrap();
-        assert!(bundle::<i64, OrchardDomain>(
-            &mut rng,
-            BundleType::DEFAULT,
-            bundle_version,
-            bundle_version.default_flags(),
-            anchor,
-            vec![spend],
-            vec![],
-            vec![],
-        )
-        .is_ok());
+        assert!(matches!(
+            bundle::<i64, OrchardDomain>(
+                &mut rng,
+                BundleType::DEFAULT,
+                bundle_version,
+                bundle_version.default_flags(),
+                anchor,
+                vec![spend],
+                vec![],
+                vec![],
+            ),
+            Err(BuildError::InvalidNoteVersion)
+        ));
 
         let output = OutputInfo::new(
             None,

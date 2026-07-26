@@ -128,7 +128,7 @@ pub fn validate_bundle_burn(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{value::NoteValue, Note};
+    use crate::{value::NoteValue, Note, NoteVersion};
 
     use alloc::{collections::BTreeSet, vec::Vec};
     use rand_core::OsRng;

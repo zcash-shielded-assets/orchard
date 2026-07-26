@@ -84,7 +84,7 @@ pub(crate) mod value_commit_orchard;
 pub use crate::Proof;
 
 /// Size of the Orchard circuit.
-const K: u32 = 11;
+pub(crate) const K: u32 = 11;
 
 // Absolute offsets for public inputs.
 pub(crate) const ANCHOR: usize = 0;
@@ -1382,6 +1382,14 @@ impl ProvingKey {
         self.circuit_version
     }
 
+    pub(crate) fn verifying_key(&self) -> VerifyingKey {
+        VerifyingKey {
+            params: self.params.clone(),
+            vk: self.pk.get_vk().clone(),
+            circuit_version: self.circuit_version,
+        }
+    }
+
     /// Returns whether this proving key supports the cross-address restriction.
     pub fn supports_cross_address_restriction(&self) -> bool {
         self.circuit_version.supports_cross_address_restriction()
@@ -1886,6 +1894,7 @@ mod tests {
             Note::new(
                 sender_address,
                 spent_note.value(),
+                spent_note.asset(),
                 rho,
                 note_version,
                 &mut rng,

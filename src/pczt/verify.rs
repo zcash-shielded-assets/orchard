@@ -53,14 +53,22 @@ impl super::Action {
     /// - `output.value`
     /// - `rcv`
     pub fn verify_cv_net(&self) -> Result<(), VerifyError> {
-        let spend_value = self.spend().value.ok_or(VerifyError::MissingValue)?;
+        let spend_value = if self.spend().rseed_split_note.is_some() {
+            crate::value::NoteValue::ZERO
+        } else {
+            self.spend().value.ok_or(VerifyError::MissingValue)?
+        };
         let output_value = self.output().value.ok_or(VerifyError::MissingValue)?;
         let rcv = self
             .rcv
             .clone()
             .ok_or(VerifyError::MissingValueCommitTrapdoor)?;
 
-        let cv_net = ValueCommitment::derive(spend_value - output_value, rcv);
+        let cv_net = ValueCommitment::derive_with_asset(
+            spend_value - output_value,
+            rcv,
+            self.spend().asset_for_note()?,
+        );
         if cv_net.to_bytes() == self.cv_net.to_bytes() {
             Ok(())
         } else {
@@ -70,6 +78,14 @@ impl super::Action {
 }
 
 impl super::Spend {
+    fn asset_for_note(&self) -> Result<AssetBase, VerifyError> {
+        match (self.asset, self.note_version) {
+            (Some(asset), _) => Ok(asset),
+            (None, crate::note::NoteVersion::V3ZSA) => Err(VerifyError::MissingAsset),
+            (None, _) => Ok(AssetBase::zatoshi()),
+        }
+    }
+
     /// Returns the [`FullViewingKey`] to use when validating this note.
     ///
     /// Handles dummy notes when the `value` field is set.
@@ -109,13 +125,14 @@ impl super::Spend {
         let note = Note::from_parts(
             self.recipient.ok_or(VerifyError::MissingRecipient)?,
             self.value.ok_or(VerifyError::MissingValue)?,
-            AssetBase::zatoshi(),
+            self.asset_for_note()?,
             self.rho.ok_or(VerifyError::MissingRho)?,
             self.rseed.ok_or(VerifyError::MissingRandomSeed)?,
             self.note_version,
         )
         .into_option()
-        .ok_or(VerifyError::InvalidSpendNote)?;
+        .ok_or(VerifyError::InvalidSpendNote)?
+        .with_rseed_split_note(self.rseed_split_note);
 
         // We need both the note and the FVK to verify the nullifier; we have everything
         // needed to also verify that the correct FVK was provided (the nullifier check
@@ -156,7 +173,15 @@ impl super::Spend {
     }
 }
 
-impl super::Output {
+impl<D: zcash_note_encryption::Domain> super::Output<D> {
+    fn asset_for_note(&self) -> Result<AssetBase, VerifyError> {
+        match (self.asset, self.note_version) {
+            (Some(asset), _) => Ok(asset),
+            (None, crate::note::NoteVersion::V3ZSA) => Err(VerifyError::MissingAsset),
+            (None, _) => Ok(AssetBase::zatoshi()),
+        }
+    }
+
     /// Verifies that the `cmx` field is consistent with the note fields.
     ///
     /// Requires that the following optional fields are set:
@@ -169,7 +194,7 @@ impl super::Output {
         let note = Note::from_parts(
             self.recipient.ok_or(VerifyError::MissingRecipient)?,
             self.value.ok_or(VerifyError::MissingValue)?,
-            AssetBase::zatoshi(),
+            self.asset_for_note()?,
             Rho::from_nf_old(spend.nullifier),
             self.rseed.ok_or(VerifyError::MissingRandomSeed)?,
             self.note_version,
@@ -208,6 +233,8 @@ pub enum VerifyError {
     MismatchedFullViewingKey,
     /// Dummy notes must have their `fvk` field set in order to be verified.
     MissingFullViewingKey,
+    /// ZSA note verification requires the asset base to be set.
+    MissingAsset,
     /// `nullifier` verification requires `rseed` to be set.
     MissingRandomSeed,
     /// Verification requires `recipient` to be set.
@@ -247,6 +274,7 @@ impl fmt::Display for VerifyError {
             VerifyError::MismatchedFullViewingKey => {
                 write!(f, "Provided full viewing key doesn't match the `fvk` field")
             }
+            VerifyError::MissingAsset => write!(f, "`asset` missing for ZSA note verification"),
             VerifyError::MissingFullViewingKey => write!(f, "`fvk` missing for dummy note"),
             VerifyError::MissingRandomSeed => {
                 write!(f, "`rseed` missing for `nullifier` verification")

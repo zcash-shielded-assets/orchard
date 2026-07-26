@@ -88,7 +88,7 @@ impl<Lookup: PallasLookupRangeCheck> super::Config<Lookup> {
 
 /// An instruction set for adding two circuit words (field elements).
 #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-pub(in crate::circuit) trait AddInstruction<F: Field>: Chip<F> {
+pub(crate) trait AddInstruction<F: Field>: Chip<F> {
     /// Constraints `a + b` and returns the sum.
     fn add(
         &self,

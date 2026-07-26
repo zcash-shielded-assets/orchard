@@ -1416,6 +1416,7 @@ mod tests {
                 NoteValue::from_raw(40),
                 asset_base,
                 rho,
+                NoteVersion::V3ZSA,
                 &mut rng,
             );
             let spent_note = if split_flag {
@@ -1455,13 +1456,20 @@ mod tests {
             let fvk: FullViewingKey = (&sk).into();
             let sender_address = fvk.address_at(0u32, Scope::External);
 
-            Note::new(sender_address, output_value, asset_base, rho, &mut rng)
+            Note::new(
+                sender_address,
+                output_value,
+                asset_base,
+                rho,
+                NoteVersion::V3ZSA,
+                &mut rng,
+            )
         };
 
         let cmx = output_note.commitment().into();
 
         let rcv = ValueCommitTrapdoor::random(&mut rng);
-        let cv_net = ValueCommitment::derive(v_net, rcv.clone(), asset_base);
+        let cv_net = ValueCommitment::derive_with_asset(v_net, rcv.clone(), asset_base);
 
         let path = MerklePath::dummy(&mut rng);
         let anchor = path.root(spent_note.commitment().into());

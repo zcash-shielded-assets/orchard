@@ -15,7 +15,8 @@ use crate::{
     bundle::{BundleVersion, Flags},
     keys::{FullViewingKey, SpendingKey},
     note::{
-        ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho, TransmittedNoteCiphertext,
+        AssetBase, ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho,
+        TransmittedNoteCiphertext,
     },
     primitives::redpallas::{self, SpendAuth},
     tree::{MerkleHashOrchard, MerklePath},
@@ -123,6 +124,7 @@ impl Spend {
         value: Option<u64>,
         rho: Option<[u8; 32]>,
         rseed: Option<[u8; 32]>,
+        rseed_split_note: Option<[u8; 32]>,
         fvk: Option<[u8; 96]>,
         witness: Option<(u32, [[u8; 32]; NOTE_COMMITMENT_TREE_DEPTH])>,
         alpha: Option<[u8; 32]>,
@@ -130,6 +132,7 @@ impl Spend {
         dummy_sk: Option<[u8; 32]>,
         note_version: NoteVersion,
         proprietary: BTreeMap<String, Vec<u8>>,
+        asset: Option<[u8; 32]>,
     ) -> Result<Self, ParseError> {
         let nullifier = Nullifier::from_bytes(&nullifier)
             .into_option()
@@ -160,6 +163,15 @@ impl Spend {
             .transpose()?;
 
         let rseed = rseed
+            .map(|rseed| {
+                let rho = rho.as_ref().ok_or(ParseError::MissingRho)?;
+                RandomSeed::from_bytes(rseed, rho)
+                    .into_option()
+                    .ok_or(ParseError::InvalidRandomSeed)
+            })
+            .transpose()?;
+
+        let rseed_split_note = rseed_split_note
             .map(|rseed| {
                 let rho = rho.as_ref().ok_or(ParseError::MissingRho)?;
                 RandomSeed::from_bytes(rseed, rho)
@@ -203,6 +215,14 @@ impl Spend {
             })
             .transpose()?;
 
+        let asset = asset
+            .map(|asset| {
+                AssetBase::from_bytes(&asset)
+                    .into_option()
+                    .ok_or(ParseError::InvalidAsset)
+            })
+            .transpose()?;
+
         Ok(Self {
             nullifier,
             rk,
@@ -211,6 +231,7 @@ impl Spend {
             value,
             rho,
             rseed,
+            rseed_split_note,
             note_version,
             fvk,
             witness,
@@ -218,6 +239,7 @@ impl Spend {
             zip32_derivation,
             dummy_sk,
             proprietary,
+            asset,
         })
     }
 }
@@ -240,6 +262,7 @@ impl<D: Domain> Output<D> {
         user_address: Option<String>,
         note_version: NoteVersion,
         proprietary: BTreeMap<String, Vec<u8>>,
+        asset: Option<[u8; 32]>,
     ) -> Result<Self, ParseError> {
         let cmx = ExtractedNoteCommitment::from_bytes(&cmx)
             .into_option()
@@ -277,6 +300,14 @@ impl<D: Domain> Output<D> {
 
         let ock = ock.map(OutgoingCipherKey);
 
+        let asset = asset
+            .map(|asset| {
+                AssetBase::from_bytes(&asset)
+                    .into_option()
+                    .ok_or(ParseError::InvalidAsset)
+            })
+            .transpose()?;
+
         Ok(Self {
             cmx,
             note_version,
@@ -288,6 +319,7 @@ impl<D: Domain> Output<D> {
             zip32_derivation,
             user_address,
             proprietary,
+            asset,
         })
     }
 }
@@ -356,6 +388,8 @@ pub enum ParseError {
     UnexpectedFlagBitsSet,
     /// An invalid `note_version` was provided.
     InvalidNoteVersion,
+    /// An invalid `asset` was provided.
+    InvalidAsset,
 }
 
 impl fmt::Display for ParseError {
@@ -367,6 +401,7 @@ impl fmt::Display for ParseError {
             ParseError::InvalidEncCiphertext => write!(f, "invalid `enc_ciphertext`"),
             ParseError::InvalidExtractedNoteCommitment => write!(f, "invalid `cmx`"),
             ParseError::InvalidFullViewingKey => write!(f, "invalid `fvk`"),
+            ParseError::InvalidAsset => write!(f, "invalid `asset`"),
             ParseError::InvalidNullifier => write!(f, "invalid `nullifier`"),
             ParseError::InvalidOutCiphertext => write!(f, "invalid `out_ciphertext`"),
             ParseError::InvalidRandomizedKey => write!(f, "invalid `rk`"),

@@ -198,6 +198,11 @@ pub struct Spend {
     /// - This is required by the Prover.
     pub(crate) rseed: Option<RandomSeed>,
 
+    /// The alternate seed used to derive the nullifier of a ZSA split note.
+    ///
+    /// Presence of this field marks this as a split spend.
+    pub(crate) rseed_split_note: Option<RandomSeed>,
+
     /// The full viewing key that received the note being spent.
     ///
     /// - This is set by the Updater.
@@ -237,6 +242,17 @@ pub struct Spend {
 
     /// Proprietary fields related to the note being spent.
     pub(crate) proprietary: BTreeMap<String, Vec<u8>>,
+
+    /// The asset of the note being spent.
+    ///
+    /// - This is set by the Constructor.
+    /// - This is required by Verifiers and Provers to reconstruct the note
+    ///   commitment (and hence the nullifier): for a ZSA note the commitment
+    ///   binds the asset, so it cannot be recovered from the other fields.
+    ///   NU7 actions require this field, including for native ZEC. `None` is
+    ///   treated as native ZEC only for older Orchard note versions.
+    #[getset(skip)]
+    pub(crate) asset: Option<AssetBase>,
 }
 
 /// Information about an Orchard output within a transaction.
@@ -311,21 +327,28 @@ pub struct Output<D: Domain = OrchardDomain> {
 
     /// Proprietary fields related to the note being created.
     pub(crate) proprietary: BTreeMap<String, Vec<u8>>,
+
+    /// The asset of the output note.
+    ///
+    /// - This is set by the Constructor.
+    /// - This is required by Provers to reconstruct the note commitment: for a
+    ///   ZSA note the commitment binds the asset. NU7 actions require this
+    ///   field, including for native ZEC; older note versions may omit it.
+    #[getset(skip)]
+    pub(crate) asset: Option<AssetBase>,
 }
 
 impl Spend {
-    /// Returns the asset base of the note being spent.
-    /// TODO: return actual asset from the spend note information.
-    pub fn asset(&self) -> AssetBase {
-        AssetBase::zatoshi()
+    /// Returns the asset base of the note being spent, if known.
+    pub fn asset(&self) -> Option<AssetBase> {
+        self.asset
     }
 }
 
 impl<D: Domain> Output<D> {
-    /// Returns the asset base of the output note.
-    /// TODO: return actual asset from the output note information.
-    pub fn asset(&self) -> AssetBase {
-        AssetBase::zatoshi()
+    /// Returns the asset base of the output note, if known.
+    pub fn asset(&self) -> Option<AssetBase> {
+        self.asset
     }
 }
 
@@ -437,6 +460,7 @@ mod tests {
         let note = Note::new(
             spend_recipient,
             NoteValue::from_raw(15_000),
+            AssetBase::zatoshi(),
             rho,
             note_version,
             &mut rng,
@@ -1125,6 +1149,7 @@ mod tests {
         let note = Note::new(
             spend_recipient,
             NoteValue::from_raw(15_000),
+            AssetBase::zatoshi(),
             rho,
             note_version,
             &mut rng,

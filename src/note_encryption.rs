@@ -551,7 +551,6 @@ pub mod testing {
     use rand::RngCore;
     use zcash_note_encryption::Domain;
 
-    use zcash_note_encryption::note_bytes::NoteBytesData;
     use crate::{
         keys::OutgoingViewingKey,
         note::{AssetBase, ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
@@ -646,6 +645,7 @@ mod tests {
         let note = Note::new(
             recipient,
             NoteValue::from_raw(5),
+            AssetBase::zatoshi(),
             rho,
             NoteVersion::V3,
             &mut rng,
@@ -795,6 +795,7 @@ mod tests {
         let note_v2 = Note::new(
             recipient,
             NoteValue::from_raw(5),
+            AssetBase::zatoshi(),
             rho,
             NoteVersion::V2,
             &mut rng,
@@ -802,6 +803,7 @@ mod tests {
         let note_v3 = Note::new(
             recipient,
             NoteValue::from_raw(5),
+            AssetBase::zatoshi(),
             rho,
             NoteVersion::V3,
             &mut rng,

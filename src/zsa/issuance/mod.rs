@@ -450,8 +450,13 @@ impl IssueBundle<AwaitingNullifier> {
                 flags: IssuanceFlags::from_parts(true),
             },
             Some(issue_info) => {
-                let note =
-                    Note::new_issue_note(issue_info.recipient, issue_info.value, asset, NoteVersion::V2, &mut rng);
+                let note = Note::new_issue_note(
+                    issue_info.recipient,
+                    issue_info.value,
+                    asset,
+                    NoteVersion::V3ZSA,
+                    &mut rng,
+                );
 
                 notes.push(note);
 
@@ -488,7 +493,8 @@ impl IssueBundle<AwaitingNullifier> {
     ) -> Result<AssetBase, Error> {
         let asset = AssetBase::custom(&AssetId::new_v0(&self.ik, &asset_desc_hash));
 
-        let note = Note::new_issue_note(recipient, value, asset, NoteVersion::V2, &mut rng);
+        let note =
+            Note::new_issue_note(recipient, value, asset, NoteVersion::V3ZSA, &mut rng);
 
         let notes = if first_issuance {
             vec![create_reference_note(asset, &mut rng), note]
@@ -589,7 +595,7 @@ fn create_reference_note(asset: AssetBase, mut rng: impl RngCore) -> Note {
         ReferenceKeys::recipient(),
         NoteValue::ZERO,
         asset,
-        NoteVersion::V2,
+        NoteVersion::V3ZSA,
         &mut rng,
     )
 }
@@ -1902,7 +1908,7 @@ mod tests {
             keys::SpendAuthorizingKey,
             note::ExtractedNoteCommitment,
             tree::{MerkleHashOrchard, MerklePath},
-            Anchor, Bundle,
+            Anchor,
         };
 
         use incrementalmerkletree::{Marking, Retention};
