@@ -1298,9 +1298,11 @@ impl VerifyingKey {
     /// See [`OrchardCircuitVersion`] for which version to use.
     pub fn build(circuit_version: OrchardCircuitVersion) -> Self {
         // ZsaFixed uses the ZsaCircuit, not the vanilla Circuit.
+        #[cfg(feature = "zsa")]
         if circuit_version == OrchardCircuitVersion::ZsaFixed {
             return Self::build_zsa();
         }
+        reject_zsa_without_feature(circuit_version);
         let params = halo2_proofs::poly::commitment::Params::new(K);
         let circuit = Circuit::empty(circuit_version);
 
@@ -1359,11 +1361,11 @@ impl ProvingKey {
     /// See [`OrchardCircuitVersion`] for which version to use.
     pub fn build(circuit_version: OrchardCircuitVersion) -> Self {
         // ZsaFixed uses the ZsaCircuit, not the vanilla Circuit.
-        #[cfg(feature = "zsa-circuit")]
+        #[cfg(feature = "zsa")]
         if circuit_version == OrchardCircuitVersion::ZsaFixed {
             return Self::build_zsa();
         }
-        let _ = circuit_version;
+        reject_zsa_without_feature(circuit_version);
         let params = halo2_proofs::poly::commitment::Params::new(K);
         let circuit = Circuit::empty(circuit_version);
 
@@ -1396,7 +1398,7 @@ impl ProvingKey {
     }
 
     /// Builds a proving key for the ZSA circuit ([`ZsaCircuit`]).
-    #[cfg(feature = "zsa-circuit")]
+    #[cfg(feature = "zsa")]
     pub fn build_zsa() -> Self {
         let params = halo2_proofs::poly::commitment::Params::new(K);
         let circuit = crate::zsa::circuit::ZsaCircuit::default();
@@ -1408,6 +1410,17 @@ impl ProvingKey {
             circuit_version: OrchardCircuitVersion::ZsaFixed,
         }
     }
+}
+
+#[cfg(feature = "zsa")]
+fn reject_zsa_without_feature(_circuit_version: OrchardCircuitVersion) {}
+
+#[cfg(not(feature = "zsa"))]
+fn reject_zsa_without_feature(circuit_version: OrchardCircuitVersion) {
+    assert!(
+        circuit_version != OrchardCircuitVersion::ZsaFixed,
+        "OrchardCircuitVersion::ZsaFixed requires the `zsa` feature"
+    );
 }
 
 /// Trait for instance types that can be mapped to Halo2 circuit public inputs.

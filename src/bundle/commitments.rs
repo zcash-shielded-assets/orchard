@@ -183,6 +183,7 @@ pub(crate) fn hash_bundle_txid_data<A: Authorization, V: Copy + Into<i64>>(
 /// 612-byte ZSA ciphertext layout where the 32-byte encrypted asset (bytes
 /// 52..84) is included in the compact portion and the memo is shifted to
 /// bytes 84..596.
+#[cfg(feature = "zsa")]
 pub(crate) fn hash_bundle_txid_data_zsa<A: Authorization, V: Copy + Into<i64>>(
     bundle: &Bundle<A, V, crate::zsa::OrchardZSADomain>,
     tx_version: TxVersion,
@@ -289,6 +290,7 @@ pub(crate) fn hash_bundle_auth_data<V>(
 /// Construct the authorizing-data commitment for a ZSA bundle.
 /// Same structure as [`hash_bundle_auth_data`] — domain-independent
 /// (proof + binding sig + optional anchor, no ciphertext indices).
+#[cfg(feature = "zsa")]
 pub(crate) fn hash_bundle_auth_data_zsa<V>(
     bundle: &Bundle<Authorized, V, crate::zsa::OrchardZSADomain>,
     tx_version: TxVersion,

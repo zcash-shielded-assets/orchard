@@ -423,6 +423,7 @@ mod tests {
         constants::MERKLE_DEPTH_ORCHARD,
         keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
         note::{AssetBase, ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
+        note_encryption::OrchardDomain,
         pczt::{
             IoFinalizerError, ParseError, ProverError, SignerError, TxExtractorError, VerifyError,
             Zip32Derivation,
@@ -552,7 +553,7 @@ mod tests {
         let recipient = fvk.address_at(0u32, Scope::External);
 
         // Run the Creator and Constructor roles.
-        let mut builder = Builder::new(
+        let mut builder = Builder::<OrchardDomain>::new(
             BundleType::DEFAULT,
             bundle_version,
             bundle_version.default_flags(),
@@ -709,7 +710,7 @@ mod tests {
         };
 
         let bundle_version = BundleVersion::ironwood_v3();
-        let mut builder = Builder::new(
+        let mut builder = Builder::<OrchardDomain>::new(
             BundleType::DEFAULT,
             bundle_version,
             bundle_version.default_flags(),
@@ -810,7 +811,7 @@ mod tests {
 
         // Run the Creator and Constructor roles.
         let bundle_version = BundleVersion::orchard_v2();
-        let mut builder = Builder::new(
+        let mut builder = Builder::<OrchardDomain>::new(
             BundleType::DEFAULT,
             bundle_version,
             bundle_version.default_flags(),
@@ -944,7 +945,7 @@ mod tests {
             BundleVersion::orchard_v3(),
         ] {
             assert!(matches!(
-                super::Bundle::parse(
+                super::Bundle::<OrchardDomain>::parse(
                     vec![],
                     0b0000_0100,
                     pr,
@@ -957,7 +958,7 @@ mod tests {
             ));
         }
 
-        let parsed = super::Bundle::parse(
+        let parsed = super::Bundle::<OrchardDomain>::parse(
             vec![],
             0b0000_0100,
             BundleVersion::ironwood_v3(),
@@ -978,7 +979,7 @@ mod tests {
             Some(0b0000_0000)
         );
 
-        let restricted = super::Bundle::parse(
+        let restricted = super::Bundle::<OrchardDomain>::parse(
             vec![],
             0b0000_0011,
             BundleVersion::orchard_v3(),
@@ -1158,7 +1159,7 @@ mod tests {
         let anchor = merkle_path.root(note.commitment().into());
 
         let bundle_version = BundleVersion::orchard_v3();
-        let mut builder = Builder::new(
+        let mut builder = Builder::<OrchardDomain>::new(
             BundleType::DEFAULT,
             bundle_version,
             bundle_version.default_flags(),

@@ -2,16 +2,21 @@ use core::fmt;
 
 use alloc::vec::Vec;
 
-use ff::PrimeField;
 use halo2_proofs::plonk;
-use pasta_curves::vesta;
 use rand::{CryptoRng, RngCore};
 
 use crate::{
     builder::SpendInfo,
-    circuit::{Circuit, CircuitInstance, Instance, OrchardCircuitVersion, ProvingKey, ZsaInstance},
+    circuit::{Circuit, Instance, OrchardCircuitVersion, ProvingKey},
     note::{AssetBase, Rho},
     Note, Proof,
+};
+
+#[cfg(feature = "zsa")]
+use {
+    crate::circuit::{CircuitInstance, ZsaInstance},
+    ff::PrimeField,
+    pasta_curves::vesta,
 };
 
 impl<D: zcash_note_encryption::Domain> super::Bundle<D> {

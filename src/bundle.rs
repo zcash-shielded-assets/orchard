@@ -217,11 +217,9 @@ impl BundleVersion {
     /// caller may instead pass a more restricted flag set such as
     /// [`Flags::CROSS_ADDRESS_DISABLED`]; the chosen flags must be representable under the version.
     pub fn default_flags(&self) -> Flags {
-        let mut flags = Flags::from_parts(true, true, self.permits_cross_address_transfers());
+        let flags = Flags::from_parts(true, true, self.permits_cross_address_transfers());
         #[cfg(feature = "zsa")]
-        {
-            flags.zsa_enabled = self.protocol_version() == ProtocolVersion::ZSA;
-        }
+        let flags = flags.with_zsa(self.protocol_version() == ProtocolVersion::ZSA);
         flags
     }
 

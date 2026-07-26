@@ -2354,7 +2354,7 @@ mod tests {
             bundle_version.note_version(),
         );
 
-        let mut builder = Builder::new(
+        let mut builder = Builder::<OrchardDomain>::new(
             transactional(false),
             bundle_version,
             bundle_version.default_flags(),
@@ -2455,7 +2455,7 @@ mod tests {
         let sk = SpendingKey::random(&mut rng);
         let fvk = FullViewingKey::from(&sk);
         let recipient = fvk.address_at(0u32, Scope::Internal);
-        let mut builder = Builder::new(
+        let mut builder = Builder::<OrchardDomain>::new(
             transactional(true),
             BundleVersion::orchard_v3(),
             BundleVersion::orchard_v3().default_flags(),
@@ -2863,7 +2863,7 @@ mod tests {
             bundle_version.note_version(),
         );
 
-        let mut builder = Builder::new(
+        let mut builder = Builder::<OrchardDomain>::new(
             transactional(false),
             bundle_version,
             bundle_version.default_flags(),
