@@ -64,10 +64,8 @@ where
     // The unwraps below are guaranteed to succeed by the assertion above
     let diversifier = Diversifier::from_bytes(plaintext[1..12].try_into().unwrap());
     let value = NoteValue::from_bytes(plaintext[12..20].try_into().unwrap());
-    let rseed = Option::from(
-        RandomSeed::from_bytes(plaintext[20..COMPACT_NOTE_SIZE].try_into().unwrap(), &rho)
-            .into_option(),
-    )?;
+    let rseed = RandomSeed::from_bytes(plaintext[20..COMPACT_NOTE_SIZE].try_into().unwrap(), &rho)
+        .into_option()?;
 
     let pk_d = get_pk_d(&diversifier);
 
@@ -425,6 +423,10 @@ impl<P: DomainPolicy, T> ShieldedOutput<NoteEncryptionDomain<P>> for Action<T> {
         EphemeralKeyBytes(self.encrypted_note().epk_bytes)
     }
 
+    fn cmstar(&self) -> &ExtractedNoteCommitment {
+        self.cmx()
+    }
+
     fn cmstar_bytes(&self) -> <NoteEncryptionDomain<P> as Domain>::ExtractedCommitmentBytes {
         self.cmx().to_bytes()
     }
@@ -449,6 +451,10 @@ impl<P: DomainPolicy> ShieldedOutput<NoteEncryptionDomain<P>> for crate::pczt::A
         EphemeralKeyBytes(self.output().encrypted_note().epk_bytes)
     }
 
+    fn cmstar(&self) -> &ExtractedNoteCommitment {
+        self.output().cmx()
+    }
+
     fn cmstar_bytes(&self) -> <NoteEncryptionDomain<P> as Domain>::ExtractedCommitmentBytes {
         self.output().cmx().to_bytes()
     }
@@ -471,6 +477,10 @@ impl<P: DomainPolicy> ShieldedOutput<NoteEncryptionDomain<P>> for crate::pczt::A
 impl<P: DomainPolicy> ShieldedOutput<NoteEncryptionDomain<P>> for CompactAction {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
         EphemeralKeyBytes(self.ephemeral_key.0)
+    }
+
+    fn cmstar(&self) -> &ExtractedNoteCommitment {
+        &self.cmx
     }
 
     fn cmstar_bytes(&self) -> <NoteEncryptionDomain<P> as Domain>::ExtractedCommitmentBytes {
@@ -575,15 +585,13 @@ pub mod testing {
     use rand::RngCore;
     use zcash_note_encryption::Domain;
 
+    use super::{CompactAction, OrchardDomain, OrchardNoteEncryption};
     use crate::{
         keys::OutgoingViewingKey,
         note::{AssetBase, ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho},
         value::NoteValue,
         Address, Note,
     };
-    use zcash_note_encryption::note_bytes::NoteBytesData;
-
-    use super::{CompactAction, OrchardDomain, OrchardNoteEncryption};
 
     /// Creates a fake `CompactAction` paying the given recipient the specified value.
     ///
@@ -606,7 +614,15 @@ pub mod testing {
                 }
             }
         };
-        let note = Note::from_parts(recipient, value, rho, rseed, NoteVersion::V2).unwrap();
+        let note = Note::from_parts(
+            recipient,
+            value,
+            AssetBase::zatoshi(),
+            rho,
+            rseed,
+            NoteVersion::V2,
+        )
+        .unwrap();
         let encryptor = OrchardNoteEncryption::new(ovk, note, [0u8; 512]);
         let cmx = ExtractedNoteCommitment::from(note.commitment());
         let ephemeral_key = OrchardDomain::epk_bytes(encryptor.epk());

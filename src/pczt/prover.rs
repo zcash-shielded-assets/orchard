@@ -12,7 +12,7 @@ use crate::{
     Note, Proof,
 };
 
-impl super::Bundle {
+impl<D: zcash_note_encryption::Domain> super::Bundle<D> {
     /// Adds a proof to this PCZT bundle.
     ///
     /// The Action circuits are built for `pk`'s circuit version; the caller selects the
@@ -83,13 +83,14 @@ impl super::Bundle {
                         .recipient
                         .ok_or(ProverError::MissingRecipient)?,
                     action.spend.value.ok_or(ProverError::MissingValue)?,
-                    AssetBase::zatoshi(),
+                    action.spend.asset.unwrap_or_else(AssetBase::zatoshi),
                     action.spend.rho.ok_or(ProverError::MissingRho)?,
                     action.spend.rseed.ok_or(ProverError::MissingRandomSeed)?,
                     action.spend.note_version,
                 )
                 .into_option()
-                .ok_or(ProverError::InvalidSpendNote)?;
+                .ok_or(ProverError::InvalidSpendNote)?
+                .with_rseed_split_note(action.spend.rseed_split_note);
 
                 let merkle_path = action
                     .spend
@@ -97,8 +98,9 @@ impl super::Bundle {
                     .clone()
                     .ok_or(ProverError::MissingWitness)?;
 
-                let spend =
+                let mut spend =
                     SpendInfo::new(fvk, note, merkle_path).ok_or(ProverError::WrongFvkForNote)?;
+                spend.split_flag = action.spend.rseed_split_note.is_some();
 
                 let output_note = Note::from_parts(
                     action
@@ -106,7 +108,7 @@ impl super::Bundle {
                         .recipient
                         .ok_or(ProverError::MissingRecipient)?,
                     action.output.value.ok_or(ProverError::MissingValue)?,
-                    AssetBase::zatoshi(),
+                    action.output.asset.unwrap_or_else(AssetBase::zatoshi),
                     Rho::from_nf_old(action.spend.nullifier),
                     action.output.rseed.ok_or(ProverError::MissingRandomSeed)?,
                     action.output.note_version,
@@ -128,24 +130,115 @@ impl super::Bundle {
             })
             .collect::<Result<Vec<_>, ProverError>>()?;
 
-        let instances = self
-            .actions
-            .iter()
-            .map(|action| {
-                Instance::from_parts(
-                    self.anchor,
-                    action.cv_net.clone(),
-                    action.spend.nullifier,
-                    action.spend.rk.clone(),
-                    action.output.cmx,
-                    self.flags,
-                )
-                .ok_or(ProverError::IdentityRk)
-            })
-            .collect::<Result<Vec<_>, ProverError>>()?;
+        let proof = if self.bundle_version.is_zsa() {
+            #[cfg(feature = "zsa")]
+            {
+                let instances = self
+                    .actions
+                    .iter()
+                    .map(|action| {
+                        crate::circuit::ZsaInstance::from_parts(
+                            self.anchor,
+                            action.cv_net.clone(),
+                            action.spend.nullifier,
+                            action.spend.rk.clone(),
+                            action.output.cmx,
+                            self.flags.spends_enabled(),
+                            self.flags.outputs_enabled(),
+                            self.flags.zsa_enabled(),
+                        )
+                        .ok_or(ProverError::IdentityRk)
+                    })
+                    .collect::<Result<Vec<_>, ProverError>>()?;
 
-        let proof =
-            Proof::create(pk, &circuits, &instances, rng).map_err(ProverError::ProofFailed)?;
+                let zsa_circuits = self
+                    .actions
+                    .iter()
+                    .map(|action| {
+                        let fvk = action
+                            .spend
+                            .fvk
+                            .clone()
+                            .ok_or(ProverError::MissingFullViewingKey)?;
+                        let note = Note::from_parts(
+                            action
+                                .spend
+                                .recipient
+                                .ok_or(ProverError::MissingRecipient)?,
+                            action.spend.value.ok_or(ProverError::MissingValue)?,
+                            action.spend.asset.unwrap_or_else(AssetBase::zatoshi),
+                            action.spend.rho.ok_or(ProverError::MissingRho)?,
+                            action.spend.rseed.ok_or(ProverError::MissingRandomSeed)?,
+                            action.spend.note_version,
+                        )
+                        .into_option()
+                        .ok_or(ProverError::InvalidSpendNote)?
+                        .with_rseed_split_note(action.spend.rseed_split_note);
+                        let merkle_path = action
+                            .spend
+                            .witness
+                            .clone()
+                            .ok_or(ProverError::MissingWitness)?;
+                        let mut spend = SpendInfo::new(fvk, note, merkle_path)
+                            .ok_or(ProverError::WrongFvkForNote)?;
+                        spend.split_flag = action.spend.rseed_split_note.is_some();
+                        let output_note = Note::from_parts(
+                            action
+                                .output
+                                .recipient
+                                .ok_or(ProverError::MissingRecipient)?,
+                            action.output.value.ok_or(ProverError::MissingValue)?,
+                            action.output.asset.unwrap_or_else(AssetBase::zatoshi),
+                            Rho::from_nf_old(action.spend.nullifier),
+                            action.output.rseed.ok_or(ProverError::MissingRandomSeed)?,
+                            action.output.note_version,
+                        )
+                        .into_option()
+                        .ok_or(ProverError::InvalidOutputNote)?;
+                        let alpha = action
+                            .spend
+                            .alpha
+                            .ok_or(ProverError::MissingSpendAuthRandomizer)?;
+                        let rcv = action
+                            .rcv
+                            .clone()
+                            .ok_or(ProverError::MissingValueCommitTrapdoor)?;
+                        crate::zsa::circuit::ZsaCircuit::from_action_context(
+                            spend,
+                            output_note,
+                            alpha,
+                            rcv,
+                        )
+                        .ok_or(ProverError::RhoMismatch)
+                    })
+                    .collect::<Result<Vec<_>, ProverError>>()?;
+
+                Proof::create_zsa(pk, &zsa_circuits, &instances, rng)
+                    .map_err(ProverError::ProofFailed)?
+            }
+            #[cfg(not(feature = "zsa"))]
+            {
+                return Err(ProverError::ProofFailed(plonk::Error::Synthesis));
+            }
+        } else {
+            let instances = self
+                .actions
+                .iter()
+                .map(|action| {
+                    Instance::from_parts(
+                        self.anchor,
+                        action.cv_net.clone(),
+                        action.spend.nullifier,
+                        action.spend.rk.clone(),
+                        action.output.cmx,
+                        self.flags,
+                    )
+                    .ok_or(ProverError::IdentityRk)
+                })
+                .collect::<Result<Vec<_>, ProverError>>()?;
+
+            Proof::create(pk, &circuits, &instances, rng).map_err(ProverError::ProofFailed)?
+        };
 
         self.zkproof = Some(proof);
 

@@ -12,6 +12,14 @@ const ZCASH_ORCHARD_V6_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOrchardH_v6";
 const ZCASH_ORCHARD_ACTIONS_COMPACT_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOrcActCHash";
 const ZCASH_ORCHARD_ACTIONS_MEMOS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOrcActMHash";
 const ZCASH_ORCHARD_ACTIONS_NONCOMPACT_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOrcActNHash";
+#[cfg(feature = "zsa")]
+const ZCASH_ORCHARD_ACTION_GROUPS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOrcActGHash";
+#[cfg(feature = "zsa")]
+const ZCASH_ORCHARD_ACTIONS_COMPACT_HASH_PERSONALIZATION_V6: &[u8; 16] = b"ZTxId6OActC_Hash";
+#[cfg(feature = "zsa")]
+const ZCASH_ORCHARD_ACTIONS_NONCOMPACT_HASH_PERSONALIZATION_V6: &[u8; 16] = b"ZTxId6OActN_Hash";
+#[cfg(feature = "zsa")]
+const ZCASH_ORCHARD_ZSA_BURN_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOrcBurnHash";
 const ZCASH_ORCHARD_V5_SIGS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxAuthOrchaHash";
 const ZCASH_ORCHARD_V6_SIGS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxAuthOrchaH_v6";
 const ZCASH_IRONWOOD_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdIronwd_H_v6";
@@ -169,6 +177,51 @@ pub(crate) fn hash_bundle_txid_data<A: Authorization, V: Copy + Into<i64>>(
     Ok(h.finalize())
 }
 
+#[cfg(feature = "zsa")]
+pub(crate) fn hash_bundle_txid_data_zsa<A: Authorization, V: Copy + Into<i64>>(
+    bundle: &Bundle<A, V, crate::zsa::OrchardZSADomain>,
+    tx_version: TxVersion,
+) -> Result<Blake2bHash, CommitmentError> {
+    let _ = bundle
+        .bundle_version()
+        .value_pool()
+        .commitment_format(tx_version)?;
+
+    let mut h = hasher(ZCASH_ORCHARD_V5_HASH_PERSONALIZATION);
+    let mut agh = hasher(ZCASH_ORCHARD_ACTION_GROUPS_HASH_PERSONALIZATION);
+    let mut ch = hasher(ZCASH_ORCHARD_ACTIONS_COMPACT_HASH_PERSONALIZATION_V6);
+    let mut mh = hasher(ZCASH_ORCHARD_ACTIONS_MEMOS_HASH_PERSONALIZATION);
+    let mut nh = hasher(ZCASH_ORCHARD_ACTIONS_NONCOMPACT_HASH_PERSONALIZATION_V6);
+
+    for action in bundle.actions().iter() {
+        ch.update(&action.nullifier().to_bytes());
+        ch.update(&action.cmx().to_bytes());
+        ch.update(&action.encrypted_note().epk_bytes);
+        ch.update(&action.encrypted_note().enc_ciphertext.as_ref()[..84]);
+        mh.update(&action.encrypted_note().enc_ciphertext.as_ref()[84..596]);
+        nh.update(&action.cv_net().to_bytes());
+        nh.update(&<[u8; 32]>::from(action.rk()));
+        nh.update(&action.encrypted_note().enc_ciphertext.as_ref()[596..]);
+        nh.update(&action.encrypted_note().out_ciphertext);
+    }
+
+    agh.update(ch.finalize().as_bytes());
+    agh.update(mh.finalize().as_bytes());
+    agh.update(nh.finalize().as_bytes());
+    agh.update(&[bundle.flag_byte()]);
+    agh.update(&bundle.anchor().to_bytes());
+    agh.update(&0u32.to_le_bytes());
+    agh.update(
+        hasher(ZCASH_ORCHARD_ZSA_BURN_HASH_PERSONALIZATION)
+            .finalize()
+            .as_bytes(),
+    );
+
+    h.update(agh.finalize().as_bytes());
+    h.update(&(*bundle.value_balance()).into().to_le_bytes());
+    Ok(h.finalize())
+}
+
 /// Construct the commitment for the absent bundle as defined in
 /// [ZIP-244: Transaction Identifier Non-Malleability][zip244]
 ///
@@ -193,6 +246,29 @@ pub fn hash_bundle_txid_empty(
 /// [zip244]: https://zips.z.cash/zip-0244
 pub(crate) fn hash_bundle_auth_data<V>(
     bundle: &Bundle<Authorized, V>,
+    tx_version: TxVersion,
+) -> Result<Blake2bHash, CommitmentError> {
+    let format = bundle
+        .bundle_version()
+        .value_pool()
+        .commitment_format(tx_version)?;
+    let mut h = hasher(format.personalizations().auth);
+    h.update(bundle.authorization().proof().as_ref());
+    for action in bundle.actions().iter() {
+        h.update(&<[u8; 64]>::from(action.authorization()));
+    }
+    h.update(&<[u8; 64]>::from(
+        bundle.authorization().binding_signature(),
+    ));
+    if format.includes_anchor_in_authorizing_digest() {
+        h.update(&bundle.anchor().to_bytes());
+    }
+    Ok(h.finalize())
+}
+
+#[cfg(feature = "zsa")]
+pub(crate) fn hash_bundle_auth_data_zsa<V>(
+    bundle: &Bundle<Authorized, V, crate::zsa::OrchardZSADomain>,
     tx_version: TxVersion,
 ) -> Result<Blake2bHash, CommitmentError> {
     let format = bundle

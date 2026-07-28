@@ -164,7 +164,7 @@ mod tests {
     ///
     /// Each asset gets a finalized `AssetRecord` with a reference note and the given supply.
     fn mock_issuance_records(data: &[AssetSupply]) -> BTreeMap<AssetBase, AssetRecord> {
-        use crate::constants::reference_keys::ReferenceKeys;
+        use crate::zsa::reference_keys::ReferenceKeys;
 
         let mut rng = OsRng;
 

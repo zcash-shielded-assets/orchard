@@ -45,6 +45,12 @@ pub enum NoteVersion {
     ///
     /// [ZIP 2005]: https://zips.z.cash/zip-2005
     V3,
+    /// The ZSA note plaintext format.
+    ///
+    /// This uses lead byte `0x03` and the version-2 note commitment trapdoor
+    /// derivation, with the asset carried in the extended plaintext.
+    #[cfg(feature = "zsa")]
+    V3ZSA,
 }
 
 impl NoteVersion {
@@ -53,6 +59,8 @@ impl NoteVersion {
         match self {
             Self::V2 => 0x02,
             Self::V3 => 0x03,
+            #[cfg(feature = "zsa")]
+            Self::V3ZSA => 0x03,
         }
     }
 
@@ -347,6 +355,30 @@ impl Note {
         }
     }
 
+    /// Generates a version-3 note for the given ZSA asset.
+    #[cfg(feature = "zsa")]
+    pub(crate) fn new_with_asset(
+        recipient: Address,
+        value: NoteValue,
+        asset: AssetBase,
+        rho: Rho,
+        mut rng: impl RngCore,
+    ) -> Self {
+        loop {
+            let note = Note::from_parts(
+                recipient,
+                value,
+                asset,
+                rho,
+                RandomSeed::random(&mut rng, &rho),
+                NoteVersion::V3ZSA,
+            );
+            if note.is_some().into() {
+                break note.unwrap();
+            }
+        }
+    }
+
     /// Creates a new issuance note with an uninitialized `rho`.
     #[cfg(feature = "zsa")]
     pub(crate) fn new_issue_note(
@@ -364,7 +396,7 @@ impl Note {
             rho: None,
             rseed,
             rseed_split_note: CtOption::new(rseed, 0u8.into()),
-            version: NoteVersion::V3,
+            version: NoteVersion::V3ZSA,
         }
     }
 
@@ -475,6 +507,18 @@ impl Note {
         }
     }
 
+    pub(crate) fn rseed_split_note(&self) -> Option<RandomSeed> {
+        self.rseed_split_note.into_option()
+    }
+
+    pub(crate) fn with_rseed_split_note(mut self, rseed_split_note: Option<RandomSeed>) -> Self {
+        self.rseed_split_note = match rseed_split_note {
+            Some(rseed) => CtOption::new(rseed, 1u8.into()),
+            None => CtOption::new(self.rseed, 0u8.into()),
+        };
+        self
+    }
+
     /// Returns the version of this note.
     pub fn version(&self) -> NoteVersion {
         self.version
@@ -485,12 +529,20 @@ impl Note {
         self.rseed.psi(&self.rho())
     }
 
+    /// Derives the ψ value used for this note's nullifier.
+    #[cfg(feature = "zsa")]
+    pub(crate) fn psi_nf(&self) -> pallas::Base {
+        self.rseed_split_note.unwrap_or(self.rseed).psi(&self.rho())
+    }
+
     /// Derives the note commitment trapdoor for this note.
     pub(crate) fn rcm(&self) -> commitment::NoteCommitTrapdoor {
         let rho = self.rho();
 
         match self.version {
             NoteVersion::V2 => self.rseed.rcm_v2(&rho),
+            #[cfg(feature = "zsa")]
+            NoteVersion::V3ZSA => self.rseed.rcm_v2(&rho),
             NoteVersion::V3 => {
                 let g_d = self.recipient.g_d();
                 let pk_d = self.recipient.pk_d().inner();
@@ -555,11 +607,19 @@ impl Note {
 
     /// Derives the nullifier for this note.
     pub fn nullifier(&self, fvk: &FullViewingKey) -> Nullifier {
-        let selected_rseed = self.rseed_split_note.unwrap_or(self.rseed);
         Nullifier::derive(
             fvk.nk(),
             self.rho().0,
-            selected_rseed.psi(&self.rho()),
+            {
+                #[cfg(feature = "zsa")]
+                {
+                    self.psi_nf()
+                }
+                #[cfg(not(feature = "zsa"))]
+                {
+                    self.psi()
+                }
+            },
             self.commitment(),
             self.rseed_split_note.is_some().into(),
         )
@@ -567,7 +627,6 @@ impl Note {
 }
 
 /// An encrypted note.
-#[derive(Clone)]
 pub struct TransmittedNoteCiphertext<D: zcash_note_encryption::Domain> {
     /// The serialization of the ephemeral public key
     pub epk_bytes: [u8; 32],
@@ -576,6 +635,16 @@ pub struct TransmittedNoteCiphertext<D: zcash_note_encryption::Domain> {
     /// An encrypted value that allows the holder of the outgoing cipher
     /// key for the note to recover the note plaintext.
     pub out_ciphertext: [u8; 80],
+}
+
+impl<D: zcash_note_encryption::Domain> Clone for TransmittedNoteCiphertext<D> {
+    fn clone(&self) -> Self {
+        Self {
+            epk_bytes: self.epk_bytes,
+            enc_ciphertext: self.enc_ciphertext,
+            out_ciphertext: self.out_ciphertext,
+        }
+    }
 }
 
 impl<D: zcash_note_encryption::Domain> fmt::Debug for TransmittedNoteCiphertext<D> {
@@ -646,7 +715,7 @@ pub mod testing {
                 rho: Some(rho),
                 rseed,
                 rseed_split_note: CtOption::new(rseed, 0u8.into()),
-                version: NoteVersion::V3,
+                version: NoteVersion::V3ZSA,
             }
         }
     }

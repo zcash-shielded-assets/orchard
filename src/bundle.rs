@@ -51,6 +51,27 @@ impl<T, D: Domain> Action<T, D> {
         )
         .expect("this Action's rk is non-identity by construction (Action::from_parts)")
     }
+
+    /// Prepares the public instance for the production ZSA circuit.
+    #[cfg(feature = "zsa")]
+    pub fn to_zsa_instance(
+        &self,
+        flags: Flags,
+        anchor: Anchor,
+        enable_zsa: bool,
+    ) -> crate::circuit::ZsaInstance {
+        crate::circuit::ZsaInstance::from_parts(
+            anchor,
+            self.cv_net().clone(),
+            *self.nullifier(),
+            self.rk().clone(),
+            *self.cmx(),
+            flags.spends_enabled(),
+            flags.outputs_enabled(),
+            enable_zsa,
+        )
+        .expect("this Action's rk is non-identity by construction (Action::from_parts)")
+    }
 }
 
 /// A shielded [`ValuePool`] (Orchard or Ironwood) together with the [`ProtocolVersion`]
@@ -114,6 +135,24 @@ impl BundleVersion {
         }
     }
 
+    /// The ZSA Orchard bundle version.
+    #[cfg(feature = "zsa")]
+    pub const fn orchard_zsa() -> Self {
+        Self {
+            value_pool: ValuePool::Orchard,
+            protocol_version: ProtocolVersion::ZSA,
+        }
+    }
+
+    /// The ZSA Ironwood bundle version.
+    #[cfg(feature = "zsa")]
+    pub const fn ironwood_zsa() -> Self {
+        Self {
+            value_pool: ValuePool::Ironwood,
+            protocol_version: ProtocolVersion::ZSA,
+        }
+    }
+
     /// Returns the [`ValuePool`] to which this bundle version applies.
     pub fn value_pool(&self) -> ValuePool {
         self.value_pool
@@ -122,6 +161,18 @@ impl BundleVersion {
     /// Returns the [`ProtocolVersion`] under which this bundle is built.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
+    }
+
+    /// Returns whether this bundle uses the ZSA protocol encoding.
+    pub const fn is_zsa(&self) -> bool {
+        #[cfg(feature = "zsa")]
+        {
+            matches!(self.protocol_version, ProtocolVersion::ZSA)
+        }
+        #[cfg(not(feature = "zsa"))]
+        {
+            false
+        }
     }
 
     /// The circuit version whose proving and verifying keys prove and verify actions consistent
@@ -137,6 +188,8 @@ impl BundleVersion {
             ProtocolVersion::InsecureV1 => OrchardCircuitVersion::InsecurePreNu6_2,
             ProtocolVersion::V2 => OrchardCircuitVersion::FixedPostNu6_2,
             ProtocolVersion::V3 => OrchardCircuitVersion::PostNu6_3,
+            #[cfg(feature = "zsa")]
+            ProtocolVersion::ZSA => OrchardCircuitVersion::FixedPostNu6_2,
         }
     }
 
@@ -145,9 +198,11 @@ impl BundleVersion {
     /// Orchard pools use V2 note plaintexts, and Ironwood pools use V3 note
     /// plaintexts.
     pub fn note_version(&self) -> NoteVersion {
-        match self.value_pool {
-            ValuePool::Orchard => NoteVersion::V2,
-            ValuePool::Ironwood => NoteVersion::V3,
+        match (self.value_pool, self.protocol_version) {
+            #[cfg(feature = "zsa")]
+            (_, ProtocolVersion::ZSA) => NoteVersion::V3ZSA,
+            (ValuePool::Orchard, _) => NoteVersion::V2,
+            (ValuePool::Ironwood, _) => NoteVersion::V3,
         }
     }
 
@@ -175,7 +230,10 @@ impl BundleVersion {
     /// caller may instead pass a more restricted flag set such as
     /// [`Flags::CROSS_ADDRESS_DISABLED`]; the chosen flags must be representable under the version.
     pub fn default_flags(&self) -> Flags {
-        Flags::from_parts(true, true, self.permits_cross_address_transfers())
+        let flags = Flags::from_parts(true, true, self.permits_cross_address_transfers());
+        #[cfg(feature = "zsa")]
+        let flags = flags.with_zsa(self.protocol_version == ProtocolVersion::ZSA);
+        flags
     }
 
     /// Whether an authorized bundle of this version must carry a canonically-sized proof.
@@ -238,6 +296,9 @@ pub struct Flags {
     /// expanded receiver as the note it spends; proving and verification must reject the
     /// bundle unless they use a circuit key that supports the restriction.
     cross_address_enabled: bool,
+    /// Whether ZSA custom-asset constraints are enabled.
+    #[cfg(feature = "zsa")]
+    zsa_enabled: bool,
 }
 
 const FLAG_SPENDS_ENABLED: u8 = 0b0000_0001;
@@ -260,6 +321,8 @@ impl Flags {
             spends_enabled,
             outputs_enabled,
             cross_address_enabled,
+            #[cfg(feature = "zsa")]
+            zsa_enabled: false,
         }
     }
 
@@ -274,6 +337,8 @@ impl Flags {
         spends_enabled: true,
         outputs_enabled: true,
         cross_address_enabled: true,
+        #[cfg(feature = "zsa")]
+        zsa_enabled: false,
     };
 
     /// The flag set for a bundle that may create notes but not spend them: every
@@ -285,6 +350,8 @@ impl Flags {
         spends_enabled: false,
         outputs_enabled: true,
         cross_address_enabled: true,
+        #[cfg(feature = "zsa")]
+        zsa_enabled: false,
     };
 
     /// The flag set for a bundle that may spend notes but not create them: every
@@ -296,6 +363,8 @@ impl Flags {
         spends_enabled: true,
         outputs_enabled: false,
         cross_address_enabled: true,
+        #[cfg(feature = "zsa")]
+        zsa_enabled: false,
     };
 
     /// The flag set with spends and outputs enabled and cross-address transfers disabled.
@@ -306,6 +375,8 @@ impl Flags {
         spends_enabled: true,
         outputs_enabled: true,
         cross_address_enabled: false,
+        #[cfg(feature = "zsa")]
+        zsa_enabled: false,
     };
 
     /// Flag denoting whether Orchard spends are enabled in the transaction.
@@ -334,6 +405,18 @@ impl Flags {
     /// bundle unless they use a circuit key that supports the restriction.
     pub fn cross_address_enabled(&self) -> bool {
         self.cross_address_enabled
+    }
+
+    /// Returns whether ZSA custom-asset constraints are enabled.
+    #[cfg(feature = "zsa")]
+    pub fn zsa_enabled(&self) -> bool {
+        self.zsa_enabled
+    }
+
+    #[cfg(feature = "zsa")]
+    pub(crate) fn with_zsa(mut self, zsa_enabled: bool) -> Self {
+        self.zsa_enabled = zsa_enabled;
+        self
     }
 
     /// Serialize flags to a byte as defined in [Zcash Protocol Spec § 7.1: Transaction
@@ -367,8 +450,23 @@ impl Flags {
                     return None;
                 }
             }
+            #[cfg(feature = "zsa")]
+            (ValuePool::Orchard, ProtocolVersion::ZSA) => {
+                if !self.cross_address_enabled {
+                    return None;
+                }
+                if self.zsa_enabled {
+                    value |= FLAG_V6_CROSS_ADDRESS_ENABLED;
+                }
+            }
             // The Ironwood pool encodes the caller's choice in bit 2.
             (ValuePool::Ironwood, ProtocolVersion::V3) => {
+                if self.cross_address_enabled {
+                    value |= FLAG_V6_CROSS_ADDRESS_ENABLED;
+                }
+            }
+            #[cfg(feature = "zsa")]
+            (ValuePool::Ironwood, ProtocolVersion::ZSA) => {
                 if self.cross_address_enabled {
                     value |= FLAG_V6_CROSS_ADDRESS_ENABLED;
                 }
@@ -414,7 +512,17 @@ impl Flags {
         //
         // https://p.z.cash/TCR:bad-txns-v5-reserved-bits-nonzero
         let bit2 = value & FLAG_V6_CROSS_ADDRESS_ENABLED != 0;
-        if bit2 && bundle_version.value_pool == ValuePool::Orchard {
+        let is_zsa = {
+            #[cfg(feature = "zsa")]
+            {
+                bundle_version.protocol_version == ProtocolVersion::ZSA
+            }
+            #[cfg(not(feature = "zsa"))]
+            {
+                false
+            }
+        };
+        if bit2 && bundle_version.value_pool == ValuePool::Orchard && !is_zsa {
             return None;
         }
 
@@ -422,11 +530,15 @@ impl Flags {
         let cross_address_enabled = match bundle_version.protocol_version {
             ProtocolVersion::InsecureV1 | ProtocolVersion::V2 => true,
             ProtocolVersion::V3 => bit2,
+            #[cfg(feature = "zsa")]
+            ProtocolVersion::ZSA => true,
         };
         Some(Self {
             spends_enabled: value & FLAG_SPENDS_ENABLED != 0,
             outputs_enabled: value & FLAG_OUTPUTS_ENABLED != 0,
             cross_address_enabled,
+            #[cfg(feature = "zsa")]
+            zsa_enabled: is_zsa && bit2,
         })
     }
 }
@@ -482,8 +594,19 @@ impl<T: Authorization, V: fmt::Debug, D: Domain + fmt::Debug> fmt::Debug for Bun
 /// proofs; see [`Bundle::try_from_parts`] (GHSA-2x4w-pxqw-58v9).
 pub(crate) fn validate_proof_size(proof: &Proof, num_actions: usize) -> Result<(), BundleError> {
     let expected = Proof::expected_proof_size(num_actions);
+    #[cfg(feature = "zsa")]
+    let expected_zsa = Proof::expected_zsa_proof_size(num_actions);
     let actual = proof.as_ref().len();
-    if actual == expected {
+    if actual == expected || {
+        #[cfg(feature = "zsa")]
+        {
+            actual == expected_zsa
+        }
+        #[cfg(not(feature = "zsa"))]
+        {
+            false
+        }
+    } {
         Ok(())
     } else {
         Err(BundleError::NonCanonicalProofSize { expected, actual })
@@ -505,9 +628,9 @@ fn validate_flags(flags: &Flags, bundle_version: BundleVersion) -> Result<(), Bu
 
 /// Default bundle impl for the primary OrchardDomain (vanilla / Ironwood).
 /// ZSA bundles use the `zsa` module.
-impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
+impl<T: Authorization, V, D: Domain> Bundle<T, V, D> {
     pub(crate) fn from_parts_unchecked(
-        actions: NonEmpty<Action<T::SpendAuth, OrchardDomain>>,
+        actions: NonEmpty<Action<T::SpendAuth, D>>,
         flags: Flags,
         value_balance: V,
         anchor: Anchor,
@@ -526,7 +649,7 @@ impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
     }
 
     /// Returns the list of actions that make up this bundle.
-    pub fn actions(&self) -> &NonEmpty<Action<T::SpendAuth, OrchardDomain>> {
+    pub fn actions(&self) -> &NonEmpty<Action<T::SpendAuth, D>> {
         &self.actions
     }
 
@@ -579,7 +702,7 @@ impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
     pub fn try_map_value_balance<V0, E, F: FnOnce(V) -> Result<V0, E>>(
         self,
         f: F,
-    ) -> Result<Bundle<T, V0, OrchardDomain>, E> {
+    ) -> Result<Bundle<T, V0, D>, E> {
         Ok(Bundle {
             actions: self.actions,
             flags: self.flags,
@@ -596,7 +719,7 @@ impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
         context: &mut R,
         mut spend_auth: impl FnMut(&mut R, &T, T::SpendAuth) -> U::SpendAuth,
         step: impl FnOnce(&mut R, T) -> U,
-    ) -> Bundle<U, V, OrchardDomain> {
+    ) -> Bundle<U, V, D> {
         let authorization = self.authorization;
         Bundle {
             actions: self
@@ -616,7 +739,7 @@ impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
         context: &mut R,
         mut spend_auth: impl FnMut(&mut R, &T, T::SpendAuth) -> Result<U::SpendAuth, E>,
         step: impl FnOnce(&mut R, T) -> Result<U, E>,
-    ) -> Result<Bundle<U, V, OrchardDomain>, E> {
+    ) -> Result<Bundle<U, V, D>, E> {
         let authorization = self.authorization;
         let new_actions = self
             .actions
@@ -642,6 +765,16 @@ impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
             .collect()
     }
 
+    #[cfg(all(feature = "circuit", feature = "zsa"))]
+    pub(crate) fn to_zsa_instances(&self, enable_zsa: bool) -> Vec<crate::circuit::ZsaInstance> {
+        self.actions
+            .iter()
+            .map(|action| action.to_zsa_instance(self.flags, self.anchor, enable_zsa))
+            .collect()
+    }
+}
+
+impl<T: Authorization, V> Bundle<T, V, OrchardDomain> {
     /// Performs trial decryption of each action in the bundle with each of the
     /// specified incoming viewing keys, and returns a vector of each decrypted
     /// note plaintext contents along with the index of the action from which it
@@ -765,6 +898,47 @@ impl<T: Authorization, V: Copy + Into<i64>> Bundle<T, V, OrchardDomain> {
                 ValueCommitTrapdoor::zero(),
             ))
         .into_bvk()
+    }
+}
+
+#[cfg(feature = "zsa")]
+impl<T: Authorization, V: Copy + Into<i64>> Bundle<T, V, crate::zsa::OrchardZSADomain> {
+    /// Computes this ZSA bundle's transaction-ID commitment component.
+    pub fn commitment(&self, tx_version: TxVersion) -> Result<BundleCommitment, CommitmentError> {
+        commitments::hash_bundle_txid_data_zsa(self, tx_version).map(BundleCommitment)
+    }
+
+    /// Returns the transaction binding validating key for this ZSA bundle.
+    pub fn binding_validating_key(&self) -> redpallas::VerificationKey<Binding> {
+        (self
+            .actions
+            .iter()
+            .map(|action| action.cv_net())
+            .sum::<ValueCommitment>()
+            - ValueCommitment::derive(
+                ValueSum::from_raw(self.value_balance.into()),
+                ValueCommitTrapdoor::zero(),
+            ))
+        .into_bvk()
+    }
+}
+
+#[cfg(feature = "zsa")]
+impl<V> Bundle<Authorized, V, crate::zsa::OrchardZSADomain> {
+    /// Computes the authorizing-data commitment for this ZSA bundle.
+    pub fn authorizing_commitment(
+        &self,
+        tx_version: TxVersion,
+    ) -> Result<BundleAuthorizingCommitment, CommitmentError> {
+        commitments::hash_bundle_auth_data_zsa(self, tx_version).map(BundleAuthorizingCommitment)
+    }
+
+    /// Verifies this bundle against the production ZSA circuit.
+    #[cfg(feature = "circuit")]
+    pub fn verify_proof(&self, vk: &VerifyingKey) -> Result<(), halo2_proofs::plonk::Error> {
+        self.authorization()
+            .proof()
+            .verify(vk, &self.to_zsa_instances(self.flags.zsa_enabled()))
     }
 }
 
@@ -1157,6 +1331,7 @@ pub mod testing {
                 spends_enabled,
                 outputs_enabled,
                 cross_address_enabled,
+                zsa_enabled: false,
             }
         }
     }

@@ -1,6 +1,6 @@
 //! The Orchard Action circuit implementation.
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use group::{Curve, GroupEncoding};
 use halo2_proofs::{
@@ -70,26 +70,26 @@ pub(crate) mod note_commit;
 #[cfg(feature = "unstable-voting-circuits")]
 pub mod note_commit;
 
-#[cfg(feature = "zsa-circuit")]
+#[cfg(feature = "zsa")]
 pub(crate) mod derive_nullifier;
-#[cfg(feature = "zsa-circuit")]
+#[cfg(feature = "zsa")]
 pub(crate) mod value_commit_orchard;
 
 pub use crate::Proof;
 
 /// Size of the Orchard circuit.
-const K: u32 = 11;
+pub(crate) const K: u32 = 11;
 
 // Absolute offsets for public inputs.
-const ANCHOR: usize = 0;
-const CV_NET_X: usize = 1;
-const CV_NET_Y: usize = 2;
-const NF_OLD: usize = 3;
-const RK_X: usize = 4;
-const RK_Y: usize = 5;
-const CMX: usize = 6;
-const ENABLE_SPEND: usize = 7;
-const ENABLE_OUTPUT: usize = 8;
+pub(crate) const ANCHOR: usize = 0;
+pub(crate) const CV_NET_X: usize = 1;
+pub(crate) const CV_NET_Y: usize = 2;
+pub(crate) const NF_OLD: usize = 3;
+pub(crate) const RK_X: usize = 4;
+pub(crate) const RK_Y: usize = 5;
+pub(crate) const CMX: usize = 6;
+pub(crate) const ENABLE_SPEND: usize = 7;
+pub(crate) const ENABLE_OUTPUT: usize = 8;
 const DISABLE_CROSS_ADDRESS: usize = 9;
 #[cfg(feature = "zsa")]
 pub(crate) const ENABLE_ZSA: usize = 9; // ZSA circuit reuses index 9 with different semantics
@@ -233,7 +233,7 @@ pub struct Config {
 }
 
 // Chip constructors for zsa-circuit.
-#[cfg(feature = "zsa-circuit")]
+#[cfg(feature = "zsa")]
 impl Config {
     pub(crate) fn zsa_ecc_chip(
         &self,
@@ -480,7 +480,7 @@ impl Circuit {
     #[cfg(feature = "zsa")]
     pub(crate) fn from_witnesses(w: &Witnesses, circuit_version: OrchardCircuitVersion) -> Self {
         Circuit {
-            path: w.path.clone(),
+            path: w.path,
             pos: w.pos,
             g_d_old: w.g_d_old,
             pk_d_old: w.pk_d_old,
@@ -1300,6 +1300,11 @@ impl VerifyingKey {
         }
     }
 
+    /// Returns a deterministic representation of the circuit structure.
+    pub fn pinned(&self) -> String {
+        format!("{:#?}", self.vk.pinned())
+    }
+
     /// The circuit version this verifying key was built for.
     pub fn circuit_version(&self) -> OrchardCircuitVersion {
         self.circuit_version
@@ -1308,6 +1313,19 @@ impl VerifyingKey {
     /// Returns whether this verifying key supports the cross-address restriction.
     pub fn supports_cross_address_restriction(&self) -> bool {
         self.circuit_version.supports_cross_address_restriction()
+    }
+
+    /// Builds the production-compatible ZSA `FixedPostNu6_2` verifying key.
+    #[cfg(feature = "zsa")]
+    pub fn build_zsa() -> Self {
+        let params = halo2_proofs::poly::commitment::Params::new(K);
+        let circuit = crate::zsa::circuit::ZsaCircuit::default();
+        let vk = plonk::keygen_vk(&params, &circuit).unwrap();
+        VerifyingKey {
+            params,
+            vk,
+            circuit_version: OrchardCircuitVersion::FixedPostNu6_2,
+        }
     }
 }
 
@@ -1349,6 +1367,37 @@ impl ProvingKey {
     pub fn supports_cross_address_restriction(&self) -> bool {
         self.circuit_version.supports_cross_address_restriction()
     }
+
+    pub(crate) fn verifying_key(&self) -> VerifyingKey {
+        VerifyingKey {
+            params: self.params.clone(),
+            vk: self.pk.get_vk().clone(),
+            circuit_version: self.circuit_version,
+        }
+    }
+
+    /// Builds the production-compatible ZSA `FixedPostNu6_2` proving key.
+    #[cfg(feature = "zsa")]
+    pub fn build_zsa() -> Self {
+        let params = halo2_proofs::poly::commitment::Params::new(K);
+        let circuit = crate::zsa::circuit::ZsaCircuit::default();
+        let vk = plonk::keygen_vk(&params, &circuit).unwrap();
+        let pk = plonk::keygen_pk(&params, vk, &circuit).unwrap();
+        ProvingKey {
+            params,
+            pk,
+            circuit_version: OrchardCircuitVersion::FixedPostNu6_2,
+        }
+    }
+}
+
+/// A public-input type accepted by the Orchard proof APIs.
+pub trait CircuitInstance {
+    /// Converts this value into the Halo2 public-input columns.
+    fn to_halo2_instance(&self) -> [[vesta::Scalar; 10]; 1];
+
+    /// Returns whether the statement disables cross-address transfers.
+    fn cross_address_disabled(&self) -> bool;
 }
 
 /// Public inputs to the Orchard Action circuit.
@@ -1366,11 +1415,6 @@ pub struct Instance {
     enable_spend: bool,
     enable_output: bool,
     cross_address_disabled: bool,
-    /// ZSA circuit: whether ZSA custom asset logic is active.
-    /// Shares circuit index 9 with `cross_address_disabled` — only
-    /// one circuit flavor is active per proof, so no conflict.
-    #[cfg(feature = "zsa")]
-    pub(crate) enable_zsa: bool,
 }
 
 impl Instance {
@@ -1415,8 +1459,6 @@ impl Instance {
             enable_spend: flags.spends_enabled(),
             enable_output: flags.outputs_enabled(),
             cross_address_disabled: !flags.cross_address_enabled(),
-            #[cfg(feature = "zsa")]
-            enable_zsa: false,
         })
     }
 
@@ -1461,6 +1503,12 @@ impl Instance {
     }
 
     fn to_halo2_instance(&self) -> [[vesta::Scalar; 10]; 1] {
+        <Self as CircuitInstance>::to_halo2_instance(self)
+    }
+}
+
+impl CircuitInstance for Instance {
+    fn to_halo2_instance(&self) -> [[vesta::Scalar; 10]; 1] {
         let mut instance = [vesta::Scalar::zero(); 10];
 
         instance[ANCHOR] = self.anchor.inner();
@@ -1489,6 +1537,130 @@ impl Instance {
 
         [instance]
     }
+
+    fn cross_address_disabled(&self) -> bool {
+        self.cross_address_disabled
+    }
+}
+
+/// Public inputs to the production ZSA Orchard Action circuit.
+///
+/// Index 9 is `enable_zsa`, not the post-NU6.3 `disable_cross_address` input.
+#[cfg(feature = "zsa")]
+#[derive(Clone, Debug)]
+pub struct ZsaInstance {
+    pub(crate) anchor: Anchor,
+    pub(crate) cv_net: ValueCommitment,
+    pub(crate) nf_old: Nullifier,
+    pub(crate) rk: VerificationKey<SpendAuth>,
+    pub(crate) cmx: ExtractedNoteCommitment,
+    pub(crate) enable_spend: bool,
+    pub(crate) enable_output: bool,
+    pub(crate) enable_zsa: bool,
+}
+
+#[cfg(feature = "zsa")]
+impl ZsaInstance {
+    /// Constructs ZSA circuit public inputs.
+    ///
+    /// Returns `None` if `rk` is the identity point.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_parts(
+        anchor: Anchor,
+        cv_net: ValueCommitment,
+        nf_old: Nullifier,
+        rk: VerificationKey<SpendAuth>,
+        cmx: ExtractedNoteCommitment,
+        enable_spend: bool,
+        enable_output: bool,
+        enable_zsa: bool,
+    ) -> Option<Self> {
+        (!rk.is_identity()).then_some(Self {
+            anchor,
+            cv_net,
+            nf_old,
+            rk,
+            cmx,
+            enable_spend,
+            enable_output,
+            enable_zsa,
+        })
+    }
+
+    /// Returns the Merkle root.
+    pub(crate) fn anchor(&self) -> &Anchor {
+        &self.anchor
+    }
+
+    /// Returns the net value commitment.
+    pub(crate) fn cv_net(&self) -> &ValueCommitment {
+        &self.cv_net
+    }
+
+    /// Returns the old note nullifier.
+    pub(crate) fn nf_old(&self) -> &Nullifier {
+        &self.nf_old
+    }
+
+    /// Returns the randomized spend validating key.
+    pub(crate) fn rk(&self) -> &VerificationKey<SpendAuth> {
+        &self.rk
+    }
+
+    /// Returns the extracted output note commitment.
+    pub(crate) fn cmx(&self) -> &ExtractedNoteCommitment {
+        &self.cmx
+    }
+
+    /// Returns whether spending is enabled.
+    pub(crate) fn enable_spend(&self) -> bool {
+        self.enable_spend
+    }
+
+    /// Returns whether outputs are enabled.
+    pub(crate) fn enable_output(&self) -> bool {
+        self.enable_output
+    }
+
+    /// Returns whether custom-asset constraints are enabled.
+    pub(crate) fn enable_zsa(&self) -> bool {
+        self.enable_zsa
+    }
+
+    fn to_halo2_instance(&self) -> [[vesta::Scalar; 10]; 1] {
+        <Self as CircuitInstance>::to_halo2_instance(self)
+    }
+}
+
+#[cfg(feature = "zsa")]
+impl CircuitInstance for ZsaInstance {
+    fn to_halo2_instance(&self) -> [[vesta::Scalar; 10]; 1] {
+        let mut instance = [vesta::Scalar::zero(); 10];
+
+        instance[ANCHOR] = self.anchor.inner();
+        instance[CV_NET_X] = self.cv_net.x();
+        instance[CV_NET_Y] = self.cv_net.y();
+        instance[NF_OLD] = self.nf_old.inner();
+
+        let rk = pallas::Point::from_bytes(&self.rk.clone().into())
+            .expect("the cached byte encoding of a VerificationKey<_> is canonical")
+            .to_affine()
+            .coordinates()
+            .expect("rk is non-identity by construction");
+
+        instance[RK_X] = *rk.x();
+        instance[RK_Y] = *rk.y();
+        instance[CMX] = self.cmx.inner();
+        instance[ENABLE_SPEND] = vesta::Scalar::from(u64::from(self.enable_spend));
+        instance[ENABLE_OUTPUT] = vesta::Scalar::from(u64::from(self.enable_output));
+        instance[ENABLE_ZSA] = vesta::Scalar::from(u64::from(self.enable_zsa));
+
+        [instance]
+    }
+
+    fn cross_address_disabled(&self) -> bool {
+        false
+    }
 }
 
 impl Proof {
@@ -1506,10 +1678,10 @@ impl Proof {
     ///
     /// All instances of a bundle carry the same `disableCrossAddress` value; that uniformity
     /// is the bundle layer's invariant, and is not checked here.
-    pub fn create(
+    pub fn create<I: CircuitInstance>(
         pk: &ProvingKey,
         circuits: &[Circuit],
-        instances: &[Instance],
+        instances: &[I],
         mut rng: impl RngCore,
     ) -> Result<Self, plonk::Error> {
         if circuits
@@ -1518,7 +1690,9 @@ impl Proof {
         {
             return Err(plonk::Error::Synthesis);
         }
-        if instances.iter().any(Instance::cross_address_disabled)
+        if instances
+            .iter()
+            .any(CircuitInstance::cross_address_disabled)
             && !pk.supports_cross_address_restriction()
         {
             return Err(plonk::Error::InvalidInstances);
@@ -1543,6 +1717,33 @@ impl Proof {
         Ok(Proof(transcript.finalize()))
     }
 
+    /// Creates a proof for production ZSA circuits.
+    #[cfg(feature = "zsa")]
+    pub fn create_zsa<I: CircuitInstance>(
+        pk: &ProvingKey,
+        circuits: &[crate::zsa::circuit::ZsaCircuit],
+        instances: &[I],
+        mut rng: impl RngCore,
+    ) -> Result<Self, plonk::Error> {
+        let instances: Vec<_> = instances.iter().map(|i| i.to_halo2_instance()).collect();
+        let instances: Vec<Vec<_>> = instances
+            .iter()
+            .map(|i| i.iter().map(|column| &column[..]).collect())
+            .collect();
+        let instances: Vec<_> = instances.iter().map(|i| &i[..]).collect();
+
+        let mut transcript = Blake2bWrite::<_, vesta::Affine, _>::init(vec![]);
+        plonk::create_proof(
+            &pk.params,
+            &pk.pk,
+            circuits,
+            &instances,
+            &mut rng,
+            &mut transcript,
+        )?;
+        Ok(Proof(transcript.finalize()))
+    }
+
     /// Verifies this proof with the given instances.
     ///
     /// # Errors
@@ -1552,8 +1753,14 @@ impl Proof {
     /// [`OrchardCircuitVersion::PostNu6_3`] verifying key.
     ///
     /// Also returns an error if proof verification fails.
-    pub fn verify(&self, vk: &VerifyingKey, instances: &[Instance]) -> Result<(), plonk::Error> {
-        if instances.iter().any(Instance::cross_address_disabled)
+    pub fn verify<I: CircuitInstance>(
+        &self,
+        vk: &VerifyingKey,
+        instances: &[I],
+    ) -> Result<(), plonk::Error> {
+        if instances
+            .iter()
+            .any(CircuitInstance::cross_address_disabled)
             && !vk.supports_cross_address_restriction()
         {
             return Err(plonk::Error::InvalidInstances);
@@ -1584,10 +1791,10 @@ impl Proof {
     ///
     /// [`BatchValidator`]: crate::bundle::BatchValidator
     /// [`add_bundle`]: crate::bundle::BatchValidator::add_bundle
-    pub(crate) fn add_to_batch(
+    pub(crate) fn add_to_batch<I: CircuitInstance>(
         &self,
         batch: &mut BatchVerifier<vesta::Affine>,
-        instances: Vec<Instance>,
+        instances: Vec<I>,
     ) {
         let instances = instances
             .iter()
@@ -1718,8 +1925,6 @@ mod tests {
                 enable_spend: true,
                 enable_output: true,
                 cross_address_disabled: false,
-                #[cfg(feature = "zsa")]
-                enable_zsa: false,
             },
         )
     }

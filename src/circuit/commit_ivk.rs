@@ -243,10 +243,7 @@ impl CommitIvkChip {
 /// Gadget functions for `CommitIvk` operations.
 #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
 pub(crate) mod gadgets {
-    use halo2_gadgets::utilities::{
-        lookup_range_check::{LookupRangeCheck, LookupRangeCheckConfig},
-        RangeConstrained,
-    };
+    use halo2_gadgets::utilities::{lookup_range_check::PallasLookupRangeCheck, RangeConstrained};
     use halo2_proofs::circuit::Chip;
 
     use super::*;
@@ -257,19 +254,20 @@ pub(crate) mod gadgets {
     #[allow(non_snake_case)]
     #[allow(clippy::type_complexity)]
     #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-    pub(crate) fn commit_ivk(
+    pub(crate) fn commit_ivk<Lookup: PallasLookupRangeCheck>(
         sinsemilla_chip: SinsemillaChip<
             OrchardHashDomains,
             OrchardCommitDomains,
             OrchardFixedBases,
+            Lookup,
         >,
-        ecc_chip: EccChip<OrchardFixedBases>,
+        ecc_chip: EccChip<OrchardFixedBases, Lookup>,
         commit_ivk_chip: CommitIvkChip,
         mut layouter: impl Layouter<pallas::Base>,
         ak: AssignedCell<pallas::Base, pallas::Base>,
         nk: AssignedCell<pallas::Base, pallas::Base>,
-        rivk: ScalarFixed<pallas::Affine, EccChip<OrchardFixedBases>>,
-    ) -> Result<X<pallas::Affine, EccChip<OrchardFixedBases>>, Error> {
+        rivk: ScalarFixed<pallas::Affine, EccChip<OrchardFixedBases, Lookup>>,
+    ) -> Result<X<pallas::Affine, EccChip<OrchardFixedBases, Lookup>>, Error> {
         let lookup_config = sinsemilla_chip.config().lookup_config();
 
         // We need to hash `ak || nk` where each of `ak`, `nk` is a field element (255 bits).
@@ -417,8 +415,8 @@ pub(crate) mod gadgets {
     ///
     /// [Specification](https://p.z.cash/orchard-0.1:commit-ivk-canonicity-ak?partial).
     #[allow(clippy::type_complexity)]
-    fn ak_canonicity(
-        lookup_config: &LookupRangeCheckConfig<pallas::Base, 10>,
+    fn ak_canonicity<Lookup: PallasLookupRangeCheck>(
+        lookup_config: &Lookup,
         mut layouter: impl Layouter<pallas::Base>,
         a: AssignedCell<pallas::Base, pallas::Base>,
     ) -> Result<
@@ -458,8 +456,8 @@ pub(crate) mod gadgets {
     ///
     /// [Specification](https://p.z.cash/orchard-0.1:commit-ivk-canonicity-nk?partial).
     #[allow(clippy::type_complexity)]
-    fn nk_canonicity(
-        lookup_config: &LookupRangeCheckConfig<pallas::Base, 10>,
+    fn nk_canonicity<Lookup: PallasLookupRangeCheck>(
+        lookup_config: &Lookup,
         mut layouter: impl Layouter<pallas::Base>,
         b_2: &RangeConstrained<pallas::Base, AssignedCell<pallas::Base, pallas::Base>>,
         c: AssignedCell<pallas::Base, pallas::Base>,

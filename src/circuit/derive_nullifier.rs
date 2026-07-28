@@ -6,8 +6,8 @@ use halo2_proofs::circuit::AssignedCell;
 use pasta_curves::pallas;
 
 pub(crate) struct ZsaNullifierParams {
-    pub(super) cond_swap_chip: CondSwapChip<pallas::Base>,
-    pub(super) split_flag: AssignedCell<pallas::Base, pallas::Base>,
+    pub(crate) cond_swap_chip: CondSwapChip<pallas::Base>,
+    pub(crate) split_flag: AssignedCell<pallas::Base, pallas::Base>,
 }
 
 pub(crate) mod gadgets {
@@ -29,7 +29,7 @@ pub(crate) mod gadgets {
     /// `DeriveNullifier` from [Section 4.16: Note Commitments and Nullifiers].
     ///
     /// [Section 4.16: Note Commitments and Nullifiers]: https://zips.z.cash/protocol/protocol.pdf#commitmentsandnullifiers
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, private_bounds)]
     /// Derives a nullifier in-circuit.
     pub(crate) fn derive_nullifier<
         PoseidonChip: PoseidonSpongeInstructions<pallas::Base, poseidon::P128Pow5T3, ConstantLength<2>, 3, 2>,

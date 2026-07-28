@@ -57,6 +57,14 @@ pub mod zip32;
 #[cfg(feature = "zsa")]
 pub mod zsa;
 
+#[cfg(feature = "zsa")]
+pub use zsa::flavor;
+#[cfg(feature = "zsa")]
+pub use zsa::issuance;
+
+#[cfg(feature = "zsa")]
+pub use zsa::issuance::sighash_kind;
+
 #[cfg(test)]
 mod test_vectors;
 
@@ -125,6 +133,14 @@ impl Proof {
         const PER_ACTION: usize = 2272;
         BASE + PER_ACTION * num_actions
     }
+
+    /// The canonical byte length of a ZSA proof authorizing a bundle of `num_actions` actions.
+    #[cfg(feature = "zsa")]
+    pub const fn expected_zsa_proof_size(num_actions: usize) -> usize {
+        const ZSA_BASE: usize = 2848;
+        const ZSA_PER_ACTION: usize = 2272;
+        ZSA_BASE + ZSA_PER_ACTION * num_actions
+    }
 }
 
 /// The set of value pools supported by the Orchard protocol.
@@ -164,4 +180,7 @@ pub enum ProtocolVersion {
     /// For transactional bundles affecting the [`ValuePool::Ironwood`] value pool, cross-address
     /// transfers are permitted and notes use V3 plaintexts.
     V3,
+    /// The production ZSA protocol version.
+    #[cfg(feature = "zsa")]
+    ZSA,
 }

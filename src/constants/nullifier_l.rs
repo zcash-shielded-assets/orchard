@@ -20,6 +20,7 @@ pub const NULLIFIER_L: (pallas::Base, pallas::Base) = (
     ]),
 );
 
+/// Returns $\mathcal{L}^{\mathsf{Orchard}}$ as a Pallas affine point.
 pub fn nullifier_l() -> pallas::Affine {
     pallas::Affine::from_xy(NULLIFIER_L.0, NULLIFIER_L.1).unwrap()
 }

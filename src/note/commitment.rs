@@ -19,10 +19,17 @@ use crate::{
     value::NoteValue,
 };
 
+#[cfg(feature = "zsa")]
+use crate::constants::fixed_bases::NOTE_ZSA_COMMITMENT_PERSONALIZATION;
+#[cfg(feature = "zsa")]
+use crate::note::AssetBase;
+#[cfg(feature = "zsa")]
+use subtle::ConditionallySelectable;
+
 /// The trapdoor for a note commitment.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "unstable-voting-circuits", visibility::make(pub))]
-pub(crate) struct NoteCommitTrapdoor(pub(super) pallas::Scalar);
+pub(crate) struct NoteCommitTrapdoor(pub(crate) pallas::Scalar);
 
 impl NoteCommitTrapdoor {
     /// Returns the inner scalar value.
@@ -58,17 +65,69 @@ impl NoteCommitment {
         psi: pallas::Base,
         rcm: NoteCommitTrapdoor,
     ) -> CtOption<Self> {
-        let domain = sinsemilla::CommitDomain::new(NOTE_COMMITMENT_PERSONALIZATION);
-        domain
-            .commit(
-                iter::empty()
-                    .chain(BitArray::<_, Lsb0>::new(g_d).iter().by_vals())
-                    .chain(BitArray::<_, Lsb0>::new(pk_d).iter().by_vals())
-                    .chain(v.to_le_bits().iter().by_vals())
-                    .chain(rho.to_le_bits().iter().by_vals().take(L_ORCHARD_BASE))
-                    .chain(psi.to_le_bits().iter().by_vals().take(L_ORCHARD_BASE)),
-                &rcm.0,
-            )
+        #[cfg(feature = "zsa")]
+        {
+            Self::derive_with_asset(g_d, pk_d, v, AssetBase::zatoshi(), rho, psi, rcm)
+        }
+        #[cfg(not(feature = "zsa"))]
+        {
+            let domain = sinsemilla::CommitDomain::new(NOTE_COMMITMENT_PERSONALIZATION);
+            domain
+                .commit(
+                    iter::empty()
+                        .chain(BitArray::<_, Lsb0>::new(g_d).iter().by_vals())
+                        .chain(BitArray::<_, Lsb0>::new(pk_d).iter().by_vals())
+                        .chain(v.to_le_bits().iter().by_vals())
+                        .chain(rho.to_le_bits().iter().by_vals().take(L_ORCHARD_BASE))
+                        .chain(psi.to_le_bits().iter().by_vals().take(L_ORCHARD_BASE)),
+                    &rcm.0,
+                )
+                .map(NoteCommitment)
+        }
+    }
+
+    /// Derives an Orchard or Orchard ZSA note commitment, selected by `asset`.
+    #[cfg(feature = "zsa")]
+    pub(crate) fn derive_with_asset(
+        g_d: [u8; 32],
+        pk_d: [u8; 32],
+        v: NoteValue,
+        asset: AssetBase,
+        rho: pallas::Base,
+        psi: pallas::Base,
+        rcm: NoteCommitTrapdoor,
+    ) -> CtOption<Self> {
+        use alloc::vec::Vec;
+
+        let common_note_bits = iter::empty()
+            .chain(BitArray::<_, Lsb0>::new(g_d).iter().by_vals())
+            .chain(BitArray::<_, Lsb0>::new(pk_d).iter().by_vals())
+            .chain(v.to_le_bits().iter().by_vals())
+            .chain(rho.to_le_bits().iter().by_vals().take(L_ORCHARD_BASE))
+            .chain(psi.to_le_bits().iter().by_vals().take(L_ORCHARD_BASE))
+            .collect::<Vec<bool>>();
+
+        let zec_note_bits = common_note_bits.clone().into_iter();
+        let asset_bits = BitArray::<_, Lsb0>::new(asset.to_bytes());
+        let zsa_note_bits = common_note_bits
+            .into_iter()
+            .chain(asset_bits.iter().by_vals());
+
+        let zec_domain = sinsemilla::CommitDomain::new(NOTE_COMMITMENT_PERSONALIZATION);
+        let commit_with_zec_domain = zec_domain.commit(zec_note_bits, &rcm.0);
+
+        let zsa_domain = sinsemilla::CommitDomain::new_with_separate_domains(
+            NOTE_ZSA_COMMITMENT_PERSONALIZATION,
+            NOTE_COMMITMENT_PERSONALIZATION,
+        );
+        let commit_with_zsa_domain = zsa_domain.commit(zsa_note_bits, &rcm.0);
+
+        commit_with_zsa_domain
+            .and_then(|zsa_commit| {
+                commit_with_zec_domain.map(|zec_commit| {
+                    pallas::Point::conditional_select(&zsa_commit, &zec_commit, asset.is_zatoshi())
+                })
+            })
             .map(NoteCommitment)
     }
 }

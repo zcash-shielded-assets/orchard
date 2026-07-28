@@ -74,10 +74,17 @@ impl Nullifier {
         rho: pallas::Base,
         psi: pallas::Base,
         cm: NoteCommitment,
+        split: bool,
     ) -> Self {
         let k = pallas::Point::hash_to_curve("z.cash:Orchard")(b"K");
+        let nf = k * mod_r_p(nk.prf_nf(rho) + psi) + cm.0;
+        let nf = if split {
+            pallas::Point::from(crate::constants::nullifier_l::nullifier_l()) + nf
+        } else {
+            nf
+        };
 
-        Nullifier(extract_p(&(k * mod_r_p(nk.prf_nf(rho) + psi) + cm.0)))
+        Nullifier(extract_p(&nf))
     }
 }
 

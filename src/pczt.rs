@@ -7,13 +7,16 @@ use core::fmt;
 
 use getset::Getters;
 use pasta_curves::pallas;
-use zcash_note_encryption::OutgoingCipherKey;
+use zcash_note_encryption::{Domain, OutgoingCipherKey};
 use zip32::ChildIndex;
 
 use crate::{
     bundle::{BundleVersion, Flags},
     keys::{FullViewingKey, SpendingKey},
-    note::{ExtractedNoteCommitment, Nullifier, RandomSeed, Rho, TransmittedNoteCiphertext},
+    note::{
+        AssetBase, ExtractedNoteCommitment, Nullifier, RandomSeed, Rho, TransmittedNoteCiphertext,
+    },
+    note_encryption::OrchardDomain,
     primitives::redpallas::{self, Binding, SpendAuth},
     tree::MerklePath,
     value::{NoteValue, ValueCommitTrapdoor, ValueCommitment, ValueSum},
@@ -51,12 +54,12 @@ pub use tx_extractor::{TxExtractorError, Unbound};
 /// [the regular `Bundle` struct]: crate::Bundle
 #[derive(Debug, Getters)]
 #[getset(get = "pub")]
-pub struct Bundle {
+pub struct Bundle<D: Domain = OrchardDomain> {
     /// The Orchard actions in this bundle.
     ///
     /// Entries are added by the Constructor, and modified by an Updater, IO Finalizer,
     /// Signer, Combiner, or Spend Finalizer.
-    pub(crate) actions: Vec<Action>,
+    pub(crate) actions: Vec<Action<D>>,
 
     /// The flags for the Orchard bundle.
     ///
@@ -111,14 +114,14 @@ pub struct Bundle {
     pub(crate) bsk: Option<redpallas::SigningKey<Binding>>,
 }
 
-impl Bundle {
+impl<D: Domain> Bundle<D> {
     /// Returns a mutable reference to the actions in this bundle.
     ///
     /// This is used by Signers to apply signatures with [`Action::sign`].
     ///
     /// Note: updating the `Action`s via the returned slice will not update other
     /// fields of the bundle dependent on them, such as `value_sum` and `bsk`.
-    pub fn actions_mut(&mut self) -> &mut [Action] {
+    pub fn actions_mut(&mut self) -> &mut [Action<D>] {
         &mut self.actions
     }
 
@@ -141,7 +144,7 @@ impl Bundle {
 /// [the regular `Action` struct]: crate::Action
 #[derive(Debug, Getters)]
 #[getset(get = "pub")]
-pub struct Action {
+pub struct Action<D: Domain = OrchardDomain> {
     /// A commitment to the net value created or consumed by this action.
     pub(crate) cv_net: ValueCommitment,
 
@@ -149,7 +152,7 @@ pub struct Action {
     pub(crate) spend: Spend,
 
     /// The output half of this action.
-    pub(crate) output: Output,
+    pub(crate) output: Output<D>,
 
     /// The value commitment randomness.
     ///
@@ -209,6 +212,9 @@ pub struct Spend {
     /// - This is required by the Prover.
     pub(crate) rseed: Option<RandomSeed>,
 
+    /// The alternate seed used to derive the nullifier of a ZSA split note.
+    pub(crate) rseed_split_note: Option<RandomSeed>,
+
     /// The full viewing key that received the note being spent.
     ///
     /// - This is set by the Updater.
@@ -248,12 +254,16 @@ pub struct Spend {
 
     /// Proprietary fields related to the note being spent.
     pub(crate) proprietary: BTreeMap<String, Vec<u8>>,
+
+    /// The asset of the note being spent.
+    #[getset(skip)]
+    pub(crate) asset: Option<AssetBase>,
 }
 
 /// Information about an Orchard output within a transaction.
 #[derive(Getters)]
 #[getset(get = "pub")]
-pub struct Output {
+pub struct Output<D: Domain = OrchardDomain> {
     /// A commitment to the new note being created.
     pub(crate) cmx: ExtractedNoteCommitment,
 
@@ -269,7 +279,7 @@ pub struct Output {
     /// - `ephemeral_key`
     /// - `enc_ciphertext`
     /// - `out_ciphertext`
-    pub(crate) encrypted_note: TransmittedNoteCiphertext<crate::note_encryption::OrchardDomain>,
+    pub(crate) encrypted_note: TransmittedNoteCiphertext<D>,
 
     /// The address that will receive the output.
     ///
@@ -324,9 +334,27 @@ pub struct Output {
 
     /// Proprietary fields related to the note being created.
     pub(crate) proprietary: BTreeMap<String, Vec<u8>>,
+
+    /// The asset of the output note.
+    #[getset(skip)]
+    pub(crate) asset: Option<AssetBase>,
 }
 
-impl fmt::Debug for Output {
+impl Spend {
+    /// Returns the asset base of the note being spent, if known.
+    pub fn asset(&self) -> Option<AssetBase> {
+        self.asset
+    }
+}
+
+impl<D: Domain> Output<D> {
+    /// Returns the asset base of the output note, if known.
+    pub fn asset(&self) -> Option<AssetBase> {
+        self.asset
+    }
+}
+
+impl<D: Domain> fmt::Debug for Output<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Output")
             .field("cmx", &self.cmx)
@@ -645,6 +673,7 @@ mod tests {
                 if let Some(note) = Note::from_parts(
                     recipient,
                     value,
+                    crate::note::AssetBase::zatoshi(),
                     rho,
                     RandomSeed::random(&mut rng, &rho),
                     NoteVersion::V3,
@@ -743,6 +772,7 @@ mod tests {
                 if let Some(note) = Note::from_parts(
                     recipient,
                     value,
+                    crate::note::AssetBase::zatoshi(),
                     rho,
                     RandomSeed::random(&mut rng, &rho),
                     bundle_version.note_version(),
@@ -874,6 +904,7 @@ mod tests {
                 if let Some(note) = Note::from_parts(
                     recipient,
                     value,
+                    crate::note::AssetBase::zatoshi(),
                     rho,
                     RandomSeed::random(&mut rng, &rho),
                     bundle_version.note_version(),
@@ -989,11 +1020,11 @@ mod tests {
         // reuse the real output's bytes through the full output parse for both branches.
         let output = action.output();
         let build_output = || {
-            super::Output::parse(
+            super::Output::<crate::note_encryption::OrchardDomain>::parse(
                 *spend.nullifier(),
                 output.cmx().to_bytes(),
                 output.encrypted_note().epk_bytes,
-                output.encrypted_note().enc_ciphertext.to_vec(),
+                output.encrypted_note().enc_ciphertext.as_ref().to_vec(),
                 output.encrypted_note().out_ciphertext.to_vec(),
                 output.recipient().map(|r| r.to_raw_address_bytes()),
                 output.value().map(|v| v.inner()),
@@ -1003,6 +1034,7 @@ mod tests {
                 output.user_address().clone(),
                 *output.note_version(),
                 output.proprietary().clone(),
+                output.asset().map(|asset| asset.to_bytes()),
             )
             .expect("output re-parses")
         };
@@ -1017,6 +1049,7 @@ mod tests {
             value_raw,
             rho_bytes,
             rseed_bytes,
+            None,
             fvk_bytes,
             witness_bytes,
             alpha_bytes,
@@ -1024,6 +1057,7 @@ mod tests {
             None,
             note_version,
             alloc::collections::BTreeMap::new(),
+            spend.asset().map(|asset| asset.to_bytes()),
         )
         .expect("full spend parse");
         assert!(full_spend.fvk().is_some(), "full parse must derive the fvk",);
@@ -1039,6 +1073,7 @@ mod tests {
             value_raw,
             rho_bytes,
             rseed_bytes,
+            None,
             fvk_bytes,
             witness_bytes,
             alpha_bytes,
@@ -1046,6 +1081,7 @@ mod tests {
             None,
             note_version,
             alloc::collections::BTreeMap::new(),
+            spend.asset().map(|asset| asset.to_bytes()),
         )
         .expect("preverified signing spend parse");
         assert!(
@@ -1104,6 +1140,7 @@ mod tests {
                     value_raw,
                     rho_bytes,
                     rseed_bytes,
+                    None,
                     bad_fvk,
                     witness_bytes,
                     alpha_bytes,
@@ -1111,6 +1148,7 @@ mod tests {
                     None,
                     note_version,
                     alloc::collections::BTreeMap::new(),
+                    spend.asset().map(|asset| asset.to_bytes()),
                 ),
                 Err(super::ParseError::InvalidFullViewingKey)
             ),
@@ -1124,6 +1162,7 @@ mod tests {
             value_raw,
             rho_bytes,
             rseed_bytes,
+            None,
             bad_fvk,
             witness_bytes,
             alpha_bytes,
@@ -1131,6 +1170,7 @@ mod tests {
             None,
             note_version,
             alloc::collections::BTreeMap::new(),
+            spend.asset().map(|asset| asset.to_bytes()),
         )
         .expect("the preverified signing parse ignores malformed fvk bytes");
         assert!(
@@ -1208,7 +1248,7 @@ mod tests {
             BundleVersion::orchard_v3(),
         ] {
             assert!(matches!(
-                super::Bundle::parse(
+                super::Bundle::<crate::note_encryption::OrchardDomain>::parse(
                     vec![],
                     0b0000_0100,
                     pr,
@@ -1221,7 +1261,7 @@ mod tests {
             ));
         }
 
-        let parsed = super::Bundle::parse(
+        let parsed = super::Bundle::<crate::note_encryption::OrchardDomain>::parse(
             vec![],
             0b0000_0100,
             BundleVersion::ironwood_v3(),
@@ -1242,7 +1282,7 @@ mod tests {
             Some(0b0000_0000)
         );
 
-        let restricted = super::Bundle::parse(
+        let restricted = super::Bundle::<crate::note_encryption::OrchardDomain>::parse(
             vec![],
             0b0000_0011,
             BundleVersion::orchard_v3(),
@@ -1272,7 +1312,7 @@ mod tests {
         let anchor = pczt_bundle.anchor.to_bytes();
         let actions = pczt_bundle.actions;
 
-        let parsed = super::Bundle::parse(
+        let parsed = super::Bundle::<crate::note_encryption::OrchardDomain>::parse(
             actions,
             flags,
             bundle_version,
@@ -1298,7 +1338,7 @@ mod tests {
         actions[0].output.note_version = NoteVersion::V2;
 
         assert!(matches!(
-            super::Bundle::parse(
+            super::Bundle::<crate::note_encryption::OrchardDomain>::parse(
                 actions,
                 flags,
                 bundle_version,

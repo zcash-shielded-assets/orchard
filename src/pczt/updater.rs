@@ -2,15 +2,16 @@ use core::fmt;
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use zcash_note_encryption::Domain;
 
 use super::{Action, Bundle, Zip32Derivation};
 use crate::{tree::MerklePath, Anchor};
 
-impl Bundle {
+impl<D: Domain> Bundle<D> {
     /// Updates the bundle with information provided in the given closure.
     pub fn update_with<F>(&mut self, f: F) -> Result<(), UpdaterError>
     where
-        F: FnOnce(Updater<'_>) -> Result<(), UpdaterError>,
+        F: FnOnce(Updater<'_, D>) -> Result<(), UpdaterError>,
     {
         f(Updater(self))
     }
@@ -18,11 +19,11 @@ impl Bundle {
 
 /// An updater for an Orchard PCZT bundle.
 #[derive(Debug)]
-pub struct Updater<'a>(&'a mut Bundle);
+pub struct Updater<'a, D: Domain = crate::note_encryption::OrchardDomain>(&'a mut Bundle<D>);
 
-impl Updater<'_> {
+impl<D: Domain> Updater<'_, D> {
     /// Provides read access to the bundle being updated.
-    pub fn bundle(&self) -> &Bundle {
+    pub fn bundle(&self) -> &Bundle<D> {
         self.0
     }
 
@@ -37,7 +38,7 @@ impl Updater<'_> {
     /// closure.
     pub fn update_action_with<F>(&mut self, index: usize, f: F) -> Result<(), UpdaterError>
     where
-        F: FnOnce(ActionUpdater<'_>) -> Result<(), UpdaterError>,
+        F: FnOnce(ActionUpdater<'_, D>) -> Result<(), UpdaterError>,
     {
         f(ActionUpdater(
             self.0
@@ -50,9 +51,9 @@ impl Updater<'_> {
 
 /// An updater for an Orchard PCZT action.
 #[derive(Debug)]
-pub struct ActionUpdater<'a>(&'a mut Action);
+pub struct ActionUpdater<'a, D: Domain = crate::note_encryption::OrchardDomain>(&'a mut Action<D>);
 
-impl ActionUpdater<'_> {
+impl<D: Domain> ActionUpdater<'_, D> {
     /// Sets the ZIP 32 derivation path for the spent note's signing key.
     pub fn set_spend_zip32_derivation(&mut self, derivation: Zip32Derivation) {
         self.0.spend.zip32_derivation = Some(derivation);

@@ -108,6 +108,43 @@ impl<'a> BatchValidator<'a> {
         Ok(())
     }
 
+    /// Adds a ZSA bundle proof and signatures to this batch.
+    #[cfg(feature = "zsa")]
+    pub fn add_bundle_zsa<V: Copy + Into<i64>, D: zcash_note_encryption::Domain>(
+        &mut self,
+        bundle: &Bundle<Authorized, V, D>,
+        sighash: [u8; 32],
+        enable_zsa: bool,
+    ) {
+        for action in bundle.actions().iter() {
+            self.signatures.push(BundleSignature {
+                signature: action
+                    .rk()
+                    .create_batch_item(action.authorization().clone(), &sighash),
+            });
+        }
+
+        let bvk = (bundle
+            .actions()
+            .iter()
+            .map(|action| action.cv_net())
+            .sum::<crate::value::ValueCommitment>()
+            - crate::value::ValueCommitment::derive(
+                crate::value::ValueSum::from_raw((*bundle.value_balance()).into()),
+                crate::value::ValueCommitTrapdoor::zero(),
+            ))
+        .into_bvk();
+        self.signatures.push(BundleSignature {
+            signature: bvk
+                .create_batch_item(bundle.authorization().binding_signature().clone(), &sighash),
+        });
+
+        bundle
+            .authorization()
+            .proof()
+            .add_to_batch(&mut self.proofs, bundle.to_zsa_instances(enable_zsa));
+    }
+
     /// Batch-validates the accumulated bundles.
     ///
     /// Returns `true` if every proof and signature in every bundle added to the batch

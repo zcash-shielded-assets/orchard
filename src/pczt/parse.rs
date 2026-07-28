@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use ff::PrimeField;
 use incrementalmerkletree::Hashable;
 use pasta_curves::pallas;
-use zcash_note_encryption::{note_bytes::NoteBytes, OutgoingCipherKey};
+use zcash_note_encryption::{note_bytes::NoteBytes, Domain, OutgoingCipherKey};
 use zip32::ChildIndex;
 
 use super::{Action, Bundle, Output, Spend, Zip32Derivation};
@@ -15,7 +15,8 @@ use crate::{
     bundle::{BundleVersion, Flags},
     keys::{FullViewingKey, SpendingKey},
     note::{
-        ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho, TransmittedNoteCiphertext,
+        AssetBase, ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho,
+        TransmittedNoteCiphertext,
     },
     primitives::redpallas::{self, SpendAuth},
     tree::{MerkleHashOrchard, MerklePath},
@@ -23,14 +24,14 @@ use crate::{
     Address, Anchor, Proof, NOTE_COMMITMENT_TREE_DEPTH,
 };
 
-impl Bundle {
+impl<D: Domain> Bundle<D> {
     /// Parses a PCZT bundle from its component parts.
     ///
     /// See [`BundleVersion`] for the choice of `bundle_version`.
     ///
     /// `value_sum` is represented as `(magnitude, is_negative)`.
     pub fn parse(
-        actions: Vec<Action>,
+        actions: Vec<Action<D>>,
         flags: u8,
         bundle_version: BundleVersion,
         value_sum: (u64, bool),
@@ -87,12 +88,12 @@ impl Bundle {
     }
 }
 
-impl Action {
+impl<D: Domain> Action<D> {
     /// Parses a PCZT action from its component parts.
     pub fn parse(
         cv_net: [u8; 32],
         spend: Spend,
-        output: Output,
+        output: Output<D>,
         rcv: Option<[u8; 32]>,
     ) -> Result<Self, ParseError> {
         let cv_net = ValueCommitment::from_bytes(&cv_net)
@@ -144,6 +145,7 @@ impl Spend {
         value: Option<u64>,
         rho: Option<[u8; 32]>,
         rseed: Option<[u8; 32]>,
+        rseed_split_note: Option<[u8; 32]>,
         fvk: Option<[u8; 96]>,
         witness: Option<(u32, [[u8; 32]; NOTE_COMMITMENT_TREE_DEPTH])>,
         alpha: Option<[u8; 32]>,
@@ -151,6 +153,7 @@ impl Spend {
         dummy_sk: Option<[u8; 32]>,
         note_version: NoteVersion,
         proprietary: BTreeMap<String, Vec<u8>>,
+        asset: Option<[u8; 32]>,
     ) -> Result<Self, ParseError> {
         Self::parse_inner(
             nullifier,
@@ -160,6 +163,7 @@ impl Spend {
             value,
             rho,
             rseed,
+            rseed_split_note,
             fvk,
             witness,
             alpha,
@@ -167,6 +171,7 @@ impl Spend {
             dummy_sk,
             note_version,
             proprietary,
+            asset,
             FvkHandling::Derive,
         )
     }
@@ -205,6 +210,7 @@ impl Spend {
         value: Option<u64>,
         rho: Option<[u8; 32]>,
         rseed: Option<[u8; 32]>,
+        rseed_split_note: Option<[u8; 32]>,
         fvk: Option<[u8; 96]>,
         witness: Option<(u32, [[u8; 32]; NOTE_COMMITMENT_TREE_DEPTH])>,
         alpha: Option<[u8; 32]>,
@@ -212,6 +218,7 @@ impl Spend {
         dummy_sk: Option<[u8; 32]>,
         note_version: NoteVersion,
         proprietary: BTreeMap<String, Vec<u8>>,
+        asset: Option<[u8; 32]>,
     ) -> Result<Self, ParseError> {
         Self::parse_inner(
             nullifier,
@@ -221,6 +228,7 @@ impl Spend {
             value,
             rho,
             rseed,
+            rseed_split_note,
             fvk,
             witness,
             alpha,
@@ -228,6 +236,7 @@ impl Spend {
             dummy_sk,
             note_version,
             proprietary,
+            asset,
             FvkHandling::Skip,
         )
     }
@@ -245,6 +254,7 @@ impl Spend {
         value: Option<u64>,
         rho: Option<[u8; 32]>,
         rseed: Option<[u8; 32]>,
+        rseed_split_note: Option<[u8; 32]>,
         fvk: Option<[u8; 96]>,
         witness: Option<(u32, [[u8; 32]; NOTE_COMMITMENT_TREE_DEPTH])>,
         alpha: Option<[u8; 32]>,
@@ -252,6 +262,7 @@ impl Spend {
         dummy_sk: Option<[u8; 32]>,
         note_version: NoteVersion,
         proprietary: BTreeMap<String, Vec<u8>>,
+        asset: Option<[u8; 32]>,
         fvk_handling: FvkHandling,
     ) -> Result<Self, ParseError> {
         let nullifier = Nullifier::from_bytes(&nullifier)
@@ -288,6 +299,23 @@ impl Spend {
                 RandomSeed::from_bytes(rseed, rho)
                     .into_option()
                     .ok_or(ParseError::InvalidRandomSeed)
+            })
+            .transpose()?;
+
+        let rseed_split_note = rseed_split_note
+            .map(|rseed| {
+                let rho = rho.as_ref().ok_or(ParseError::MissingRho)?;
+                RandomSeed::from_bytes(rseed, rho)
+                    .into_option()
+                    .ok_or(ParseError::InvalidRandomSeed)
+            })
+            .transpose()?;
+
+        let asset = asset
+            .map(|asset| {
+                AssetBase::from_bytes(&asset)
+                    .into_option()
+                    .ok_or(ParseError::InvalidAsset)
             })
             .transpose()?;
 
@@ -341,6 +369,7 @@ impl Spend {
             value,
             rho,
             rseed,
+            rseed_split_note,
             note_version,
             fvk,
             witness,
@@ -348,11 +377,12 @@ impl Spend {
             zip32_derivation,
             dummy_sk,
             proprietary,
+            asset,
         })
     }
 }
 
-impl Output {
+impl<D: Domain> Output<D> {
     /// Parses a PCZT output from its component parts, and the corresponding `Spend`'s
     /// nullifier.
     #[allow(clippy::too_many_arguments)]
@@ -370,17 +400,16 @@ impl Output {
         user_address: Option<String>,
         note_version: NoteVersion,
         proprietary: BTreeMap<String, Vec<u8>>,
+        asset: Option<[u8; 32]>,
     ) -> Result<Self, ParseError> {
         let cmx = ExtractedNoteCommitment::from_bytes(&cmx)
             .into_option()
             .ok_or(ParseError::InvalidExtractedNoteCommitment)?;
 
-        let encrypted_note = TransmittedNoteCiphertext::<crate::note_encryption::OrchardDomain> {
+        let encrypted_note = TransmittedNoteCiphertext::<D> {
             epk_bytes: ephemeral_key,
-            enc_ciphertext: zcash_note_encryption::note_bytes::NoteBytesData::<580>::from_slice(
-                &enc_ciphertext,
-            )
-            .ok_or(ParseError::InvalidEncCiphertext)?,
+            enc_ciphertext: <D::NoteCiphertextBytes as NoteBytes>::from_slice(&enc_ciphertext)
+                .ok_or(ParseError::InvalidEncCiphertext)?,
             out_ciphertext: out_ciphertext
                 .as_slice()
                 .try_into()
@@ -409,6 +438,14 @@ impl Output {
 
         let ock = ock.map(OutgoingCipherKey);
 
+        let asset = asset
+            .map(|asset| {
+                AssetBase::from_bytes(&asset)
+                    .into_option()
+                    .ok_or(ParseError::InvalidAsset)
+            })
+            .transpose()?;
+
         Ok(Self {
             cmx,
             note_version,
@@ -420,6 +457,7 @@ impl Output {
             zip32_derivation,
             user_address,
             proprietary,
+            asset,
         })
     }
 }
@@ -488,6 +526,8 @@ pub enum ParseError {
     UnexpectedFlagBitsSet,
     /// An invalid `note_version` was provided.
     InvalidNoteVersion,
+    /// An invalid asset base was provided.
+    InvalidAsset,
 }
 
 impl fmt::Display for ParseError {
@@ -515,6 +555,7 @@ impl fmt::Display for ParseError {
             }
             ParseError::UnexpectedFlagBitsSet => write!(f, "`flags` field had unexpected bits set"),
             ParseError::InvalidNoteVersion => write!(f, "invalid `note_version`"),
+            ParseError::InvalidAsset => write!(f, "invalid `asset`"),
         }
     }
 }

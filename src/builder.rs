@@ -4,11 +4,12 @@ use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use core::fmt;
 use core::iter;
+use core::marker::PhantomData;
 
 use ff::Field;
 use pasta_curves::pallas;
 use rand::{prelude::SliceRandom, CryptoRng, RngCore};
-use zcash_note_encryption::ENC_CIPHERTEXT_SIZE;
+use zcash_note_encryption::{note_bytes::NoteBytes, Domain};
 
 use crate::{
     address::Address,
@@ -17,13 +18,32 @@ use crate::{
         FullViewingKey, OutgoingViewingKey, Scope, SpendAuthorizingKey, SpendValidatingKey,
         SpendingKey,
     },
-    note::{ExtractedNoteCommitment, Note, NoteVersion, Nullifier, Rho, TransmittedNoteCiphertext},
-    note_encryption::OrchardNoteEncryption,
+    note::{
+        AssetBase, ExtractedNoteCommitment, Note, NoteVersion, Nullifier, Rho,
+        TransmittedNoteCiphertext,
+    },
     primitives::redpallas::{self, Binding, SpendAuth},
     tree::{Anchor, MerklePath},
     value::{self, BalanceError, NoteValue, ValueCommitTrapdoor, ValueCommitment, ValueSum},
     Proof,
 };
+
+/// A note-encryption domain backed by Orchard's concrete note and key types.
+pub trait DomainExt:
+    Domain<
+    OutgoingViewingKey = OutgoingViewingKey,
+    Note = Note,
+    Memo = [u8; 512],
+    ValueCommitment = ValueCommitment,
+    ExtractedCommitment = ExtractedNoteCommitment,
+    ExtractedCommitmentBytes = [u8; 32],
+>
+{
+}
+
+impl DomainExt for crate::note_encryption::OrchardDomain {}
+#[cfg(feature = "zsa")]
+impl DomainExt for crate::zsa::OrchardZSADomain {}
 
 #[cfg(feature = "circuit")]
 use {
@@ -203,6 +223,8 @@ pub enum BuildError {
     /// digest — and hence every signature — excludes the bundle anchor (the V6 formats;
     /// [ZIP 374](https://zips.z.cash/zip-0374)).
     AnchorDeferralUnsupported,
+    /// A custom-asset output requires a real spend that can be split for padding.
+    NoSplitNoteAvailable,
 }
 
 impl fmt::Display for BuildError {
@@ -253,6 +275,7 @@ impl fmt::Display for BuildError {
                 "Anchors can be deferred only for bundle formats whose txid digest \
                  excludes the anchor.",
             ),
+            NoSplitNoteAvailable => f.write_str("No split note has been provided for this asset"),
         }
     }
 }
@@ -345,13 +368,14 @@ impl fmt::Display for OutputError {
 impl std::error::Error for OutputError {}
 
 /// Information about a specific note to be spent in an [`Action`].
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SpendInfo {
     pub(crate) dummy_sk: Option<SpendingKey>,
     pub(crate) fvk: FullViewingKey,
     pub(crate) scope: Scope,
     pub(crate) note: Note,
     pub(crate) merkle_path: Option<MerklePath>,
+    pub(crate) split_flag: bool,
 }
 
 impl SpendInfo {
@@ -372,6 +396,7 @@ impl SpendInfo {
             scope,
             note,
             merkle_path: Some(merkle_path),
+            split_flag: false,
         })
     }
 
@@ -392,6 +417,7 @@ impl SpendInfo {
             scope,
             note,
             merkle_path: None,
+            split_flag: false,
         })
     }
 
@@ -410,6 +436,7 @@ impl SpendInfo {
             scope: Scope::External,
             note,
             merkle_path,
+            split_flag: false,
         }
     }
 
@@ -428,6 +455,19 @@ impl SpendInfo {
                     &path.root(cm.into()) == anchor
                 }
             }
+        }
+    }
+
+    /// Creates a split spend for a custom-asset output-only action.
+    #[cfg(feature = "zsa")]
+    fn create_split_spend(&self, rng: &mut impl RngCore) -> Self {
+        SpendInfo {
+            dummy_sk: None,
+            fvk: self.fvk.clone(),
+            scope: Scope::External,
+            note: self.note.create_split_note(rng),
+            merkle_path: self.merkle_path.clone(),
+            split_flag: true,
         }
     }
 
@@ -464,6 +504,7 @@ impl SpendInfo {
             value: Some(self.note.value()),
             rho: Some(self.note.rho()),
             rseed: Some(*self.note.rseed()),
+            rseed_split_note: self.note.rseed_split_note(),
             note_version: self.note.version(),
             fvk: Some(self.fvk),
             witness: self.merkle_path,
@@ -471,6 +512,7 @@ impl SpendInfo {
             zip32_derivation: None,
             dummy_sk: self.dummy_sk,
             proprietary: BTreeMap::new(),
+            asset: Some(self.note.asset()),
         }
     }
 }
@@ -479,11 +521,11 @@ impl SpendInfo {
 ///
 /// This carries a plain output to an arbitrary recipient. For wallet-controlled change,
 /// which additionally records the owning full viewing key, see [`ChangeInfo`].
-#[derive(Debug)]
-pub struct OutputInfo {
+pub struct OutputInfo<D: Domain = crate::note_encryption::OrchardDomain> {
     ovk: Option<OutgoingViewingKey>,
     recipient: Address,
     value: NoteValue,
+    asset: AssetBase,
     memo: [u8; 512],
     note_version: NoteVersion,
     /// When set, `build` fills `enc_ciphertext` with random bytes instead of encrypting the
@@ -499,9 +541,37 @@ pub struct OutputInfo {
     /// value, and classifies it as a dummy output it tolerates -- rather than reconstructing the
     /// expected ciphertext and rejecting the mismatch.
     randomized_ciphertext: bool,
+    _domain: PhantomData<D>,
 }
 
-impl OutputInfo {
+impl<D: Domain> fmt::Debug for OutputInfo<D> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OutputInfo")
+            .field("recipient", &self.recipient)
+            .field("value", &self.value)
+            .field("asset", &self.asset)
+            .field("note_version", &self.note_version)
+            .field("randomized_ciphertext", &self.randomized_ciphertext)
+            .finish()
+    }
+}
+
+impl<D: Domain> OutputInfo<D> {
+    fn into_domain<D2: Domain>(self) -> OutputInfo<D2> {
+        OutputInfo {
+            ovk: self.ovk,
+            recipient: self.recipient,
+            value: self.value,
+            asset: self.asset,
+            memo: self.memo,
+            note_version: self.note_version,
+            randomized_ciphertext: self.randomized_ciphertext,
+            _domain: PhantomData,
+        }
+    }
+}
+
+impl<D: DomainExt> OutputInfo<D> {
     /// Constructs a new OutputInfo from its constituent parts.
     pub fn new(
         ovk: Option<OutgoingViewingKey>,
@@ -510,13 +580,34 @@ impl OutputInfo {
         note_version: NoteVersion,
         memo: [u8; 512],
     ) -> Self {
+        Self::new_with_asset(
+            ovk,
+            recipient,
+            value,
+            AssetBase::zatoshi(),
+            note_version,
+            memo,
+        )
+    }
+
+    /// Constructs an output for the given asset.
+    pub fn new_with_asset(
+        ovk: Option<OutgoingViewingKey>,
+        recipient: Address,
+        value: NoteValue,
+        asset: AssetBase,
+        note_version: NoteVersion,
+        memo: [u8; 512],
+    ) -> Self {
         Self {
             ovk,
             recipient,
             value,
+            asset,
             memo,
             note_version,
             randomized_ciphertext: false,
+            _domain: PhantomData,
         }
     }
 
@@ -530,26 +621,36 @@ impl OutputInfo {
     fn fabricated_for_spend(
         note_version: NoteVersion,
         recipient: Address,
+        asset: AssetBase,
         spent_scope: Scope,
     ) -> Self {
         Self {
             ovk: None,
             recipient,
             value: NoteValue::ZERO,
+            asset,
             memo: [0u8; 512],
             note_version,
             randomized_ciphertext: matches!(spent_scope, Scope::External),
+            _domain: PhantomData,
         }
     }
 
     /// Defined in [Zcash Protocol Spec § 4.8.3: Dummy Notes (Orchard)][orcharddummynotes].
     ///
     /// [orcharddummynotes]: https://zips.z.cash/protocol/nu5.pdf#orcharddummynotes
-    pub fn dummy(note_version: NoteVersion, rng: &mut impl RngCore) -> Self {
+    pub fn dummy(note_version: NoteVersion, asset: AssetBase, rng: &mut impl RngCore) -> Self {
         let fvk: FullViewingKey = (&SpendingKey::random(rng)).into();
         let recipient = fvk.address_at(0u32, Scope::External);
 
-        Self::new(None, recipient, NoteValue::ZERO, note_version, [0u8; 512])
+        Self::new_with_asset(
+            None,
+            recipient,
+            NoteValue::ZERO,
+            asset,
+            note_version,
+            [0u8; 512],
+        )
     }
 
     /// Builds the output half of an action.
@@ -562,19 +663,25 @@ impl OutputInfo {
         cv_net: &ValueCommitment,
         nf_old: Nullifier,
         mut rng: impl RngCore,
-    ) -> (
-        Note,
-        ExtractedNoteCommitment,
-        TransmittedNoteCiphertext<crate::note_encryption::OrchardDomain>,
-    ) {
+    ) -> (Note, ExtractedNoteCommitment, TransmittedNoteCiphertext<D>) {
         let rho = Rho::from_nf_old(nf_old);
-        let note = Note::new(self.recipient, self.value, rho, self.note_version, &mut rng);
+        #[cfg(feature = "zsa")]
+        let note = if self.note_version == NoteVersion::V3ZSA {
+            Note::new_with_asset(self.recipient, self.value, self.asset, rho, &mut rng)
+        } else {
+            debug_assert_eq!(self.asset, AssetBase::zatoshi());
+            Note::new(self.recipient, self.value, rho, self.note_version, &mut rng)
+        };
+        #[cfg(not(feature = "zsa"))]
+        let note = {
+            debug_assert_eq!(self.asset, AssetBase::zatoshi());
+            Note::new(self.recipient, self.value, rho, self.note_version, &mut rng)
+        };
         let cm_new = note.commitment();
         let cmx = cm_new.into();
 
-        // The Orchard and Ironwood encryptor aliases share encryption behavior;
-        // `Note::version()` selects the note plaintext lead byte.
-        let encryptor = OrchardNoteEncryption::new(self.ovk.clone(), note, self.memo);
+        let encryptor =
+            zcash_note_encryption::NoteEncryption::<D>::new(self.ovk.clone(), note, self.memo);
 
         // `encryptor` still supplies a valid non-identity `epk` and, because these outputs use
         // `ovk = None`, a random `out_ciphertext`. Only `enc_ciphertext` is replaced.
@@ -584,15 +691,15 @@ impl OutputInfo {
                 NoteValue::ZERO,
                 "a randomized note ciphertext must never stand in for a nonzero-valued note",
             );
-            let mut enc_ciphertext = [0u8; ENC_CIPHERTEXT_SIZE];
-            rng.fill_bytes(&mut enc_ciphertext);
+            let mut enc_ciphertext = D::NoteCiphertextBytes::zeroed();
+            rng.fill_bytes(enc_ciphertext.as_mut());
             enc_ciphertext
         } else {
             encryptor.encrypt_note_plaintext()
         };
 
         let encrypted_note = TransmittedNoteCiphertext {
-            epk_bytes: encryptor.epk().to_bytes().0,
+            epk_bytes: D::epk_bytes(encryptor.epk()).0,
             enc_ciphertext,
             out_ciphertext: encryptor.encrypt_outgoing_plaintext(cv_net, &cmx, &mut rng),
         };
@@ -605,7 +712,7 @@ impl OutputInfo {
         cv_net: &ValueCommitment,
         nf_old: Nullifier,
         rng: impl RngCore,
-    ) -> crate::pczt::Output {
+    ) -> crate::pczt::Output<D> {
         let (note, cmx, encrypted_note) = self.build(cv_net, nf_old, rng);
 
         crate::pczt::Output {
@@ -621,6 +728,7 @@ impl OutputInfo {
             zip32_derivation: None,
             user_address: None,
             proprietary: BTreeMap::new(),
+            asset: Some(self.asset),
         }
     }
 }
@@ -634,13 +742,13 @@ impl OutputInfo {
 /// equivalent to the underlying [`OutputInfo`] (the ownership is validated when the
 /// `ChangeInfo` is constructed, then plays no further role).
 #[derive(Debug)]
-pub struct ChangeInfo {
-    output: OutputInfo,
+pub struct ChangeInfo<D: Domain = crate::note_encryption::OrchardDomain> {
+    output: OutputInfo<D>,
     fvk: FullViewingKey,
     scope: Scope,
 }
 
-impl ChangeInfo {
+impl<D: DomainExt> ChangeInfo<D> {
     /// Constructs a wallet-controlled change output to `recipient`, owned by `fvk`.
     ///
     /// Returns [`OutputError::RecipientNotOwned`] if `fvk` does not own `recipient`. The
@@ -655,11 +763,32 @@ impl ChangeInfo {
         note_version: NoteVersion,
         memo: [u8; 512],
     ) -> Result<Self, OutputError> {
+        Self::new_with_asset(
+            fvk,
+            ovk,
+            recipient,
+            value,
+            AssetBase::zatoshi(),
+            note_version,
+            memo,
+        )
+    }
+
+    /// Constructs wallet-controlled change for the given asset.
+    pub fn new_with_asset(
+        fvk: FullViewingKey,
+        ovk: Option<OutgoingViewingKey>,
+        recipient: Address,
+        value: NoteValue,
+        asset: AssetBase,
+        note_version: NoteVersion,
+        memo: [u8; 512],
+    ) -> Result<Self, OutputError> {
         let scope = fvk
             .scope_for_address(&recipient)
             .ok_or(OutputError::RecipientNotOwned)?;
         Ok(Self {
-            output: OutputInfo::new(ovk, recipient, value, note_version, memo),
+            output: OutputInfo::new_with_asset(ovk, recipient, value, asset, note_version, memo),
             fvk,
             scope,
         })
@@ -669,21 +798,29 @@ impl ChangeInfo {
     ///
     /// Used on the build path for bundles that permit cross-address transfers, where the
     /// ownership has already served its purpose (validation at construction).
-    fn into_output(self) -> OutputInfo {
+    fn into_output(self) -> OutputInfo<D> {
         self.output
+    }
+
+    fn into_domain<D2: DomainExt>(self) -> ChangeInfo<D2> {
+        ChangeInfo {
+            output: self.output.into_domain(),
+            fvk: self.fvk,
+            scope: self.scope,
+        }
     }
 }
 
 /// Information about a specific [`Action`] we plan to build.
 #[derive(Debug)]
-struct ActionInfo {
+struct ActionInfo<D: Domain> {
     spend: SpendInfo,
-    output: OutputInfo,
+    output: OutputInfo<D>,
     rcv: ValueCommitTrapdoor,
 }
 
-impl ActionInfo {
-    fn new(spend: SpendInfo, output: OutputInfo, rng: impl RngCore) -> Self {
+impl<D: DomainExt> ActionInfo<D> {
+    fn new(spend: SpendInfo, output: OutputInfo<D>, rng: impl RngCore) -> Self {
         ActionInfo {
             spend,
             output,
@@ -693,7 +830,11 @@ impl ActionInfo {
 
     /// Returns the value sum for this action.
     fn value_sum(&self) -> ValueSum {
-        self.spend.note.value() - self.output.value
+        if self.spend.split_flag {
+            NoteValue::ZERO - self.output.value
+        } else {
+            self.spend.note.value() - self.output.value
+        }
     }
 
     /// Builds the action for a given circuit version.
@@ -708,15 +849,16 @@ impl ActionInfo {
         self,
         mut rng: impl RngCore,
         circuit_version: OrchardCircuitVersion,
-    ) -> (Action<SigningMetadata>, Circuit) {
+    ) -> (Action<SigningMetadata, D>, Circuit) {
         let v_net = self.value_sum();
-        let cv_net = ValueCommitment::derive(v_net, self.rcv.clone());
+        let cv_net =
+            ValueCommitment::derive_with_asset(v_net, self.rcv.clone(), self.spend.note.asset());
 
         let (nf_old, ak, alpha, rk) = self.spend.build(&mut rng);
         let (note, cmx, encrypted_note) = self.output.build(&cv_net, nf_old, &mut rng);
 
         (
-            Action::from_parts(
+            Action::<SigningMetadata, D>::from_parts(
                 nf_old,
                 rk,
                 cmx,
@@ -741,9 +883,10 @@ impl ActionInfo {
         )
     }
 
-    fn build_for_pczt(self, mut rng: impl RngCore) -> crate::pczt::Action {
+    fn build_for_pczt(self, mut rng: impl RngCore) -> crate::pczt::Action<D> {
         let v_net = self.value_sum();
-        let cv_net = ValueCommitment::derive(v_net, self.rcv.clone());
+        let cv_net =
+            ValueCommitment::derive_with_asset(v_net, self.rcv.clone(), self.spend.note.asset());
 
         let spend = self.spend.into_pczt(&mut rng);
         let output = self.output.into_pczt(&cv_net, spend.nullifier, &mut rng);
@@ -761,7 +904,8 @@ impl ActionInfo {
 ///
 /// This is returned by [`Builder::build`].
 #[cfg(feature = "circuit")]
-pub type UnauthorizedBundle<V> = Bundle<InProgress<Unproven, Unauthorized>, V>;
+pub type UnauthorizedBundle<V, D = crate::note_encryption::OrchardDomain> =
+    Bundle<InProgress<Unproven, Unauthorized>, V, D>;
 
 /// Metadata about a bundle created by [`bundle`] or [`Builder::build`] that is not necessarily
 /// recoverable from the bundle itself.
@@ -823,13 +967,13 @@ impl BundleMetadata {
 /// A builder that constructs a [`Bundle`] from a set of notes to be spent, and outputs
 /// to receive funds.
 #[derive(Debug)]
-pub struct Builder {
+pub struct Builder<D: Domain = crate::note_encryption::OrchardDomain> {
     bundle_type: BundleType,
     bundle_version: BundleVersion,
     flags: Flags,
     spends: Vec<SpendInfo>,
-    outputs: Vec<OutputInfo>,
-    changes: Vec<ChangeInfo>,
+    outputs: Vec<OutputInfo<D>>,
+    changes: Vec<ChangeInfo<D>>,
     anchor: BuilderAnchor,
 }
 
@@ -844,7 +988,29 @@ enum BuilderAnchor {
     Deferred,
 }
 
-impl Builder {
+impl Builder<crate::note_encryption::OrchardDomain> {
+    /// Constructs a new empty Orchard-domain builder.
+    pub fn new(
+        bundle_type: BundleType,
+        bundle_version: BundleVersion,
+        flags: Flags,
+        anchor: Anchor,
+    ) -> Result<Self, BuildError> {
+        Self::new_for_domain(bundle_type, bundle_version, flags, anchor)
+    }
+
+    /// Constructs a new Orchard-domain builder with a deferred anchor.
+    pub fn new_with_anchor_deferred(
+        bundle_type: BundleType,
+        bundle_version: BundleVersion,
+        flags: Flags,
+        tx_version: TxVersion,
+    ) -> Result<Self, BuildError> {
+        Self::new_with_anchor_deferred_for_domain(bundle_type, bundle_version, flags, tx_version)
+    }
+}
+
+impl<D: DomainExt> Builder<D> {
     /// Constructs a new empty builder for an Orchard bundle following `bundle_version` with the
     /// given `flags`.
     ///
@@ -861,7 +1027,7 @@ impl Builder {
     /// Returns [`BuildError::UnrepresentableFlags`] if `flags` cannot be encoded under
     /// `bundle_version`, or [`BuildError::CoinbaseSpendsEnabled`] if `bundle_type` is
     /// [`BundleType::Coinbase`] but `flags` enable spends.
-    pub fn new(
+    fn new_for_domain(
         bundle_type: BundleType,
         bundle_version: BundleVersion,
         flags: Flags,
@@ -909,7 +1075,7 @@ impl Builder {
     /// digest (or is not a valid combination), and the errors of [`Self::new`] otherwise.
     ///
     /// [ZIP 374]: https://zips.z.cash/zip-0374
-    pub fn new_with_anchor_deferred(
+    fn new_with_anchor_deferred_for_domain(
         bundle_type: BundleType,
         bundle_version: BundleVersion,
         flags: Flags,
@@ -922,7 +1088,8 @@ impl Builder {
         {
             return Err(BuildError::AnchorDeferralUnsupported);
         }
-        let mut builder = Self::new(bundle_type, bundle_version, flags, Anchor::empty_tree())?;
+        let mut builder =
+            Self::new_for_domain(bundle_type, bundle_version, flags, Anchor::empty_tree())?;
         builder.anchor = BuilderAnchor::Deferred;
         Ok(builder)
     }
@@ -1024,6 +1191,18 @@ impl Builder {
         value: NoteValue,
         memo: [u8; 512],
     ) -> Result<(), OutputError> {
+        self.add_output_with_asset(ovk, recipient, value, AssetBase::zatoshi(), memo)
+    }
+
+    /// Adds an output denominated in `asset`.
+    pub fn add_output_with_asset(
+        &mut self,
+        ovk: Option<OutgoingViewingKey>,
+        recipient: Address,
+        value: NoteValue,
+        asset: AssetBase,
+        memo: [u8; 512],
+    ) -> Result<(), OutputError> {
         if !self.flags.outputs_enabled() {
             return Err(OutputError::OutputsDisabled);
         }
@@ -1031,10 +1210,11 @@ impl Builder {
             return Err(OutputError::CrossAddressDisabled);
         }
 
-        self.outputs.push(OutputInfo::new(
+        self.outputs.push(OutputInfo::new_with_asset(
             ovk,
             recipient,
             value,
+            asset,
             self.note_version(),
             memo,
         ));
@@ -1073,6 +1253,19 @@ impl Builder {
         value: NoteValue,
         memo: [u8; 512],
     ) -> Result<(), OutputError> {
+        self.add_change_output_with_asset(fvk, ovk, recipient, value, AssetBase::zatoshi(), memo)
+    }
+
+    /// Adds wallet-controlled change denominated in `asset`.
+    pub fn add_change_output_with_asset(
+        &mut self,
+        fvk: FullViewingKey,
+        ovk: Option<OutgoingViewingKey>,
+        recipient: Address,
+        value: NoteValue,
+        asset: AssetBase,
+        memo: [u8; 512],
+    ) -> Result<(), OutputError> {
         if !self.flags.outputs_enabled() {
             return Err(OutputError::OutputsDisabled);
         }
@@ -1084,7 +1277,15 @@ impl Builder {
             return Err(OutputError::SpendsDisabled);
         }
 
-        let change = ChangeInfo::new(fvk, ovk, recipient, value, self.note_version(), memo)?;
+        let change = ChangeInfo::new_with_asset(
+            fvk,
+            ovk,
+            recipient,
+            value,
+            asset,
+            self.note_version(),
+            memo,
+        )?;
         self.changes.push(change);
 
         Ok(())
@@ -1106,6 +1307,27 @@ impl Builder {
     /// transaction being constructed.
     pub fn changes(&self) -> &Vec<impl OutputView> {
         &self.changes
+    }
+
+    /// Re-parameterizes this builder to a different note-encryption domain.
+    pub fn into_domain<D2: DomainExt>(self) -> Builder<D2> {
+        Builder {
+            bundle_type: self.bundle_type,
+            bundle_version: self.bundle_version,
+            flags: self.flags,
+            spends: self.spends,
+            outputs: self
+                .outputs
+                .into_iter()
+                .map(OutputInfo::into_domain)
+                .collect(),
+            changes: self
+                .changes
+                .into_iter()
+                .map(ChangeInfo::into_domain)
+                .collect(),
+            anchor: self.anchor,
+        }
     }
 
     /// The net value of the bundle to be built. The value of all spends,
@@ -1147,17 +1369,18 @@ impl Builder {
     /// created with a [`ProvingKey`] for the circuit version consistent with the builder's
     /// bundle version.
     #[cfg(feature = "circuit")]
+    #[allow(clippy::type_complexity)]
     pub fn build<V: TryFrom<i64>>(
         self,
         rng: impl RngCore,
-    ) -> Result<Option<(UnauthorizedBundle<V>, BundleMetadata)>, BuildError> {
+    ) -> Result<Option<(UnauthorizedBundle<V, D>, BundleMetadata)>, BuildError> {
         // An in-memory bundle proves against its anchor immediately; a deferred-anchor
         // bundle has none, so it can only be built for a PCZT.
         let anchor = match self.anchor {
             BuilderAnchor::Fixed(anchor) => anchor,
             BuilderAnchor::Deferred => return Err(BuildError::AnchorRequired),
         };
-        bundle(
+        bundle_with_domain(
             rng,
             self.bundle_type,
             self.bundle_version,
@@ -1174,7 +1397,7 @@ impl Builder {
     pub fn build_for_pczt(
         self,
         rng: impl RngCore,
-    ) -> Result<(crate::pczt::Bundle, BundleMetadata), BuildError> {
+    ) -> Result<(crate::pczt::Bundle<D>, BundleMetadata), BuildError> {
         // The PCZT bundle's `anchor` field is required (public API), so a deferred-anchor
         // bundle carries the empty-tree root purely as a placeholder alongside the
         // deferral flag; a PCZT serializer emits the anchor as absent.
@@ -1241,6 +1464,31 @@ pub fn bundle<V: TryFrom<i64>>(
     outputs: Vec<OutputInfo>,
     changes: Vec<ChangeInfo>,
 ) -> Result<Option<(UnauthorizedBundle<V>, BundleMetadata)>, BuildError> {
+    bundle_with_domain(
+        rng,
+        bundle_type,
+        bundle_version,
+        flags,
+        anchor,
+        spends,
+        outputs,
+        changes,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
+#[cfg(feature = "circuit")]
+fn bundle_with_domain<V: TryFrom<i64>, D: DomainExt>(
+    rng: impl RngCore,
+    bundle_type: BundleType,
+    bundle_version: BundleVersion,
+    flags: Flags,
+    anchor: Anchor,
+    spends: Vec<SpendInfo>,
+    outputs: Vec<OutputInfo<D>>,
+    changes: Vec<ChangeInfo<D>>,
+) -> Result<Option<(UnauthorizedBundle<V, D>, BundleMetadata)>, BuildError> {
     build_bundle(
         rng,
         bundle_version,
@@ -1265,15 +1513,16 @@ pub fn bundle<V: TryFrom<i64>>(
 }
 
 #[cfg(feature = "circuit")]
-fn finish_unauthorized_bundle<V: TryFrom<i64>, R: RngCore>(
-    pre_actions: Vec<ActionInfo>,
+#[allow(clippy::type_complexity)]
+fn finish_unauthorized_bundle<V: TryFrom<i64>, D: DomainExt, R: RngCore>(
+    pre_actions: Vec<ActionInfo<D>>,
     flags: Flags,
     value_balance: ValueSum,
     bundle_meta: BundleMetadata,
     mut rng: R,
     anchor: Anchor,
     bundle_version: BundleVersion,
-) -> Result<Option<(UnauthorizedBundle<V>, BundleMetadata)>, BuildError> {
+) -> Result<Option<(UnauthorizedBundle<V, D>, BundleMetadata)>, BuildError> {
     let circuit_version = bundle_version.circuit_version();
     let result_value_balance: V = i64::try_from(value_balance)
         .map_err(BuildError::ValueSum)
@@ -1302,7 +1551,7 @@ fn finish_unauthorized_bundle<V: TryFrom<i64>, R: RngCore>(
 
     Ok(NonEmpty::from_vec(actions).map(|actions| {
         (
-            Bundle::from_parts_unchecked(
+            Bundle::<InProgress<Unproven, Unauthorized>, V, D>::from_parts_unchecked(
                 actions,
                 flags,
                 result_value_balance,
@@ -1321,17 +1570,83 @@ fn finish_unauthorized_bundle<V: TryFrom<i64>, R: RngCore>(
     }))
 }
 
+type MetadataIdx = Option<usize>;
+
+#[allow(clippy::type_complexity)]
+fn align_spends_and_outputs<D: DomainExt>(
+    spends: Vec<(SpendInfo, MetadataIdx)>,
+    outputs: Vec<(OutputInfo<D>, MetadataIdx)>,
+    asset: AssetBase,
+    note_version: NoteVersion,
+    rng: &mut impl RngCore,
+) -> Vec<((SpendInfo, MetadataIdx), (OutputInfo<D>, MetadataIdx))> {
+    let num_actions = spends.len().max(outputs.len());
+    let first_spend = spends.first().map(|(spend, _)| spend.clone());
+
+    let mut padded_spends: Vec<_> = spends
+        .into_iter()
+        .chain(iter::repeat_with(|| {
+            (
+                pad_spend(first_spend.as_ref(), asset, note_version, rng)
+                    .unwrap_or_else(|err| panic!("{err:?}")),
+                None,
+            )
+        }))
+        .take(num_actions)
+        .collect();
+    let mut padded_outputs: Vec<_> = outputs
+        .into_iter()
+        .chain(iter::repeat_with(|| {
+            (OutputInfo::dummy(note_version, asset, rng), None)
+        }))
+        .take(num_actions)
+        .collect();
+
+    padded_spends.shuffle(rng);
+    padded_outputs.shuffle(rng);
+    padded_spends.into_iter().zip(padded_outputs).collect()
+}
+
+fn pad_spend(
+    spend: Option<&SpendInfo>,
+    asset: AssetBase,
+    note_version: NoteVersion,
+    rng: &mut impl RngCore,
+) -> Result<SpendInfo, BuildError> {
+    if asset.is_zatoshi().into() {
+        Ok(SpendInfo::dummy(note_version, rng))
+    } else {
+        #[cfg(feature = "zsa")]
+        {
+            spend
+                .map(|spend| spend.create_split_spend(rng))
+                .ok_or(BuildError::NoSplitNoteAvailable)
+        }
+        #[cfg(not(feature = "zsa"))]
+        {
+            let _ = spend;
+            Err(BuildError::NoSplitNoteAvailable)
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-fn build_bundle<B, R: RngCore>(
+fn build_bundle<D: DomainExt, B, R: RngCore>(
     mut rng: R,
     bundle_version: BundleVersion,
     flags: Flags,
     anchor: Anchor,
     bundle_type: BundleType,
     spends: Vec<SpendInfo>,
-    outputs: Vec<OutputInfo>,
-    changes: Vec<ChangeInfo>,
-    finisher: impl FnOnce(Vec<ActionInfo>, Flags, ValueSum, BundleMetadata, R) -> Result<B, BuildError>,
+    outputs: Vec<OutputInfo<D>>,
+    changes: Vec<ChangeInfo<D>>,
+    finisher: impl FnOnce(
+        Vec<ActionInfo<D>>,
+        Flags,
+        ValueSum,
+        BundleMetadata,
+        R,
+    ) -> Result<B, BuildError>,
 ) -> Result<B, BuildError> {
     // Every build path funnels through here (the free `bundle` function, `Builder::build`, and
     // `Builder::build_for_pczt`), so validate the version-dependent invariants here rather than
@@ -1408,14 +1723,37 @@ fn build_bundle<B, R: RngCore>(
         let mut pairs = Vec::with_capacity(num_actions);
 
         for (spend_idx, spend) in spends.into_iter().enumerate() {
-            let output =
-                OutputInfo::fabricated_for_spend(note_version, spend.note.recipient(), spend.scope);
+            let output = OutputInfo::fabricated_for_spend(
+                note_version,
+                spend.note.recipient(),
+                spend.note.asset(),
+                spend.scope,
+            );
             pairs.push((Some(spend_idx), None, spend, output));
         }
 
         for (chg_idx, change) in changes.into_iter().enumerate() {
             let ChangeInfo { output, fvk, scope } = change;
             let rho = Rho::from_nf_old(Nullifier::dummy(&mut rng));
+            #[cfg(feature = "zsa")]
+            let note = if note_version == NoteVersion::V3ZSA {
+                Note::new_with_asset(
+                    output.recipient,
+                    NoteValue::ZERO,
+                    output.asset,
+                    rho,
+                    &mut rng,
+                )
+            } else {
+                Note::new(
+                    output.recipient,
+                    NoteValue::ZERO,
+                    rho,
+                    note_version,
+                    &mut rng,
+                )
+            };
+            #[cfg(not(feature = "zsa"))]
             let note = Note::new(
                 output.recipient,
                 NoteValue::ZERO,
@@ -1431,16 +1769,18 @@ fn build_bundle<B, R: RngCore>(
                 scope,
                 note,
                 merkle_path: Some(MerklePath::dummy(&mut rng)),
+                split_flag: false,
             };
             pairs.push((None, Some(chg_idx), spend, output));
         }
 
         while pairs.len() < num_actions {
             let spend = SpendInfo::dummy(note_version, &mut rng);
-            let output = OutputInfo::new(
+            let output = OutputInfo::new_with_asset(
                 None,
                 spend.note.recipient(),
                 NoteValue::ZERO,
+                AssetBase::zatoshi(),
                 note_version,
                 [0u8; 512],
             );
@@ -1482,49 +1822,65 @@ fn build_bundle<B, R: RngCore>(
 
         (pre_actions, bundle_meta)
     } else {
-        // Pair up the spends and outputs, extending with dummy values as necessary.
-        let mut indexed_spends = spends
-            .into_iter()
-            .chain(iter::repeat_with(|| {
-                SpendInfo::dummy(note_version, &mut rng)
-            }))
-            .enumerate()
-            .take(num_actions)
-            .collect::<Vec<_>>();
-
-        // Plain outputs first, then change outputs collapsed to plain outputs (their
-        // ownership was validated when each `ChangeInfo` was constructed and plays no
-        // further role when cross-address transfers are permitted). This ordering matches
-        // the `BundleMetadata` output numbering.
-        let mut indexed_outputs = outputs
+        #[allow(clippy::type_complexity)]
+        let mut by_asset: BTreeMap<
+            AssetBase,
+            (
+                Vec<(SpendInfo, MetadataIdx)>,
+                Vec<(OutputInfo<D>, MetadataIdx)>,
+            ),
+        > = BTreeMap::new();
+        for (idx, spend) in spends.into_iter().enumerate() {
+            by_asset
+                .entry(spend.note.asset())
+                .or_default()
+                .0
+                .push((spend, Some(idx)));
+        }
+        let outputs = outputs
             .into_iter()
             .chain(changes.into_iter().map(ChangeInfo::into_output))
-            .chain(iter::repeat_with(|| {
-                OutputInfo::dummy(note_version, &mut rng)
-            }))
-            .enumerate()
-            .take(num_actions)
             .collect::<Vec<_>>();
+        let num_requested_outputs = outputs.len();
+        for (idx, output) in outputs.into_iter().enumerate() {
+            by_asset
+                .entry(output.asset)
+                .or_default()
+                .1
+                .push((output, Some(idx)));
+        }
 
-        // Shuffle the spends and outputs, so that learning the position of a
-        // specific spent note or output note doesn't reveal anything on its own about
-        // the meaning of that note in the transaction context.
-        indexed_spends.shuffle(&mut rng);
-        indexed_outputs.shuffle(&mut rng);
+        let mut pairs = by_asset
+            .into_iter()
+            .flat_map(|(asset, (spends, outputs))| {
+                align_spends_and_outputs(spends, outputs, asset, note_version, &mut rng)
+            })
+            .collect::<Vec<_>>();
+        pairs.extend(
+            iter::repeat_with(|| {
+                (
+                    (SpendInfo::dummy(note_version, &mut rng), None),
+                    (
+                        OutputInfo::dummy(note_version, AssetBase::zatoshi(), &mut rng),
+                        None,
+                    ),
+                )
+            })
+            .take(num_actions.saturating_sub(pairs.len())),
+        );
+        pairs.shuffle(&mut rng);
 
         let mut bundle_meta = BundleMetadata::new(num_requested_spends, num_requested_outputs);
-        let pre_actions = indexed_spends
+        let pre_actions = pairs
             .into_iter()
-            .zip(indexed_outputs)
             .enumerate()
-            .map(|(action_idx, ((spend_idx, spend), (out_idx, output)))| {
-                // Record the post-randomization spend location
-                if spend_idx < num_requested_spends {
+            .map(|(action_idx, ((spend, spend_idx), (output, out_idx)))| {
+                if let Some(spend_idx) = spend_idx {
                     bundle_meta.spend_indices[spend_idx] = action_idx;
+                } else if spend.split_flag {
+                    bundle_meta.spend_indices.push(action_idx);
                 }
-
-                // Record the post-randomization output location
-                if out_idx < num_requested_outputs {
+                if let Some(out_idx) = out_idx {
                     bundle_meta.output_indices[out_idx] = action_idx;
                 }
 
@@ -1538,6 +1894,7 @@ fn build_bundle<B, R: RngCore>(
     // Determine the value balance for this bundle, ensuring it is valid.
     let value_balance = pre_actions
         .iter()
+        .filter(|action| action.spend.note.asset().is_zatoshi().into())
         .try_fold(ValueSum::zero(), |acc, action| acc + action.value_sum())
         .ok_or(BalanceError::Overflow)?;
 
@@ -1856,13 +2213,13 @@ pub trait OutputView {
     fn value<V: From<u64>>(&self) -> V;
 }
 
-impl OutputView for OutputInfo {
+impl<D: DomainExt> OutputView for OutputInfo<D> {
     fn value<V: From<u64>>(&self) -> V {
         V::from(self.value.inner())
     }
 }
 
-impl OutputView for ChangeInfo {
+impl<D: DomainExt> OutputView for ChangeInfo<D> {
     fn value<V: From<u64>>(&self) -> V {
         self.output.value()
     }

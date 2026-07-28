@@ -10,159 +10,255 @@ use pasta_curves::{arithmetic::CurveAffine, pallas};
 
 use halo2_gadgets::{
     ecc::{
-        chip::EccChip, CircuitVersion, FixedPoint, NonIdentityPoint, Point, ScalarFixed, ScalarVar,
+        chip::{EccChip, EccConfig},
+        CircuitVersion, FixedPoint, NonIdentityPoint, Point, ScalarFixed, ScalarVar,
     },
-    poseidon::{primitives as poseidon, Pow5Chip as PoseidonChip},
+    poseidon::{primitives as poseidon, Pow5Chip as PoseidonChip, Pow5Config as PoseidonConfig},
     sinsemilla::{
-        chip::SinsemillaChip,
-        merkle::{chip::MerkleChip, MerklePath},
+        chip::{SinsemillaChip, SinsemillaConfig},
+        merkle::{
+            chip::{MerkleChip, MerkleConfig},
+            MerklePath,
+        },
     },
     utilities::{
         bool_check,
-        lookup_range_check::{
-            LookupRangeCheck4_5BConfig, LookupRangeCheckConfig, PallasLookupRangeCheck4_5BConfig,
-        },
+        cond_swap::CondSwapChip,
+        lookup_range_check::{LookupRangeCheck4_5BConfig, PallasLookupRangeCheck4_5BConfig},
     },
 };
 
 use halo2_proofs::{
     circuit::{Layouter, Value},
-    plonk::{self, Constraints, Expression},
+    plonk::{self, Advice, Column, Constraints, Expression, Instance as InstanceColumn, Selector},
     poly::Rotation,
 };
 
 use crate::{
     circuit::{
-        commit_ivk::{gadgets::commit_ivk, CommitIvkChip},
+        commit_ivk::{gadgets::commit_ivk, CommitIvkChip, CommitIvkConfig},
         derive_nullifier::{gadgets::derive_nullifier, ZsaNullifierParams},
         gadget::{
-            add_chip::AddChip, assign_free_advice, assign_is_zatoshi_asset, assign_split_flag,
+            add_chip::{AddChip, AddConfig},
+            assign_free_advice, assign_is_zatoshi_asset, assign_split_flag,
         },
-        note_commit::{gadgets::note_commit, NoteCommitChip, ZsaNoteCommitParams},
         unpack,
         value_commit_orchard::{gadgets::value_commit_orchard, ZsaValueCommitParams},
-        AdditionalZsaWitnesses, Config, OrchardCircuit, Witnesses, ANCHOR, CMX, CV_NET_X, CV_NET_Y,
-        ENABLE_OUTPUT, ENABLE_SPEND, ENABLE_ZSA, NF_OLD, RK_X, RK_Y,
+        AdditionalZsaWitnesses, OrchardCircuit, OrchardCircuitVersion, Witnesses, ANCHOR, CMX,
+        CV_NET_X, CV_NET_Y, ENABLE_OUTPUT, ENABLE_SPEND, ENABLE_ZSA, NF_OLD, RK_X, RK_Y,
     },
     constants::{
         OrchardCommitDomains, OrchardFixedBases, OrchardFixedBasesFull, OrchardHashDomains,
     },
     note::AssetBase,
     zsa::flavor::OrchardZSA,
+    zsa::note_commit::{
+        gadgets::note_commit, NoteCommitChip, NoteCommitConfig, ZsaNoteCommitParams,
+    },
 };
 
-/// ZSA-specific circuit configuration.
+/// Configuration needed to use the OrchardZSA Action circuit.
+///
+/// Mirrors the layout of the orchard 0.14 ZSA `Config`, with the note-commit
+/// configurations coming from the ZSA-specific [`crate::zsa::note_commit`]
+/// module (which binds the asset into the note commitment in-circuit).
 #[derive(Clone, Debug)]
 pub struct ZsaConfig {
-    pub(crate) primary: halo2_proofs::plonk::Column<halo2_proofs::plonk::Instance>,
-    pub(crate) q_orchard: halo2_proofs::plonk::Selector,
-    pub(crate) advices: [halo2_proofs::plonk::Column<halo2_proofs::plonk::Advice>; 10],
-    pub(crate) add_config: crate::circuit::gadget::add_chip::AddConfig,
-    pub(crate) ecc_config: halo2_gadgets::ecc::chip::EccConfig<
-        OrchardFixedBases,
-        LookupRangeCheckConfig<pallas::Base, 10>,
-    >,
-    pub(crate) poseidon_config: halo2_gadgets::poseidon::Pow5Config<pallas::Base, 3, 2>,
-    pub(crate) merkle_config_1: halo2_gadgets::sinsemilla::merkle::chip::MerkleConfig<
+    pub(crate) primary: Column<InstanceColumn>,
+    pub(crate) q_orchard: Selector,
+    pub(crate) advices: [Column<Advice>; 10],
+    pub(crate) add_config: AddConfig,
+    pub(crate) ecc_config: EccConfig<OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>,
+    pub(crate) poseidon_config: PoseidonConfig<pallas::Base, 3, 2>,
+    pub(crate) merkle_config_1: MerkleConfig<
         OrchardHashDomains,
-        crate::constants::OrchardCommitDomains,
+        OrchardCommitDomains,
         OrchardFixedBases,
-        LookupRangeCheckConfig<pallas::Base, 10>,
+        PallasLookupRangeCheck4_5BConfig,
     >,
-    pub(crate) merkle_config_2: halo2_gadgets::sinsemilla::merkle::chip::MerkleConfig<
+    pub(crate) merkle_config_2: MerkleConfig<
         OrchardHashDomains,
-        crate::constants::OrchardCommitDomains,
+        OrchardCommitDomains,
         OrchardFixedBases,
-        LookupRangeCheckConfig<pallas::Base, 10>,
+        PallasLookupRangeCheck4_5BConfig,
     >,
-    pub(crate) sinsemilla_config_1: halo2_gadgets::sinsemilla::chip::SinsemillaConfig<
+    pub(crate) sinsemilla_config_1: SinsemillaConfig<
         OrchardHashDomains,
-        crate::constants::OrchardCommitDomains,
+        OrchardCommitDomains,
         OrchardFixedBases,
-        LookupRangeCheckConfig<pallas::Base, 10>,
+        PallasLookupRangeCheck4_5BConfig,
     >,
-    pub(crate) sinsemilla_config_2: halo2_gadgets::sinsemilla::chip::SinsemillaConfig<
+    pub(crate) sinsemilla_config_2: SinsemillaConfig<
         OrchardHashDomains,
-        crate::constants::OrchardCommitDomains,
+        OrchardCommitDomains,
         OrchardFixedBases,
-        LookupRangeCheckConfig<pallas::Base, 10>,
+        PallasLookupRangeCheck4_5BConfig,
     >,
-    pub(crate) commit_ivk_config: crate::circuit::commit_ivk::CommitIvkConfig,
-    pub(crate) old_note_commit_config: crate::circuit::note_commit::NoteCommitConfig,
-    pub(crate) new_note_commit_config: crate::circuit::note_commit::NoteCommitConfig,
+    pub(crate) commit_ivk_config: CommitIvkConfig,
+    pub(crate) old_note_commit_config: NoteCommitConfig<PallasLookupRangeCheck4_5BConfig>,
+    pub(crate) new_note_commit_config: NoteCommitConfig<PallasLookupRangeCheck4_5BConfig>,
 }
 
 impl ZsaConfig {
-    pub(crate) fn zsa_ecc_chip(
-        &self,
-        version: halo2_gadgets::ecc::chip::CircuitVersion,
-    ) -> EccChip<OrchardFixedBases, LookupRangeCheckConfig<pallas::Base, 10>> {
-        EccChip::<OrchardFixedBases, LookupRangeCheckConfig<pallas::Base, 10>>::construct(
-            self.ecc_config.clone(),
-            version,
-        )
-    }
-    pub(crate) fn zsa_add_chip(&self) -> AddChip {
+    fn add_chip(&self) -> AddChip {
         AddChip::construct(self.add_config.clone())
     }
-    pub(crate) fn zsa_poseidon_chip(&self) -> PoseidonChip<pallas::Base, 3, 2> {
-        PoseidonChip::construct(self.poseidon_config.clone())
+
+    fn commit_ivk_chip(&self) -> CommitIvkChip {
+        CommitIvkChip::construct(self.commit_ivk_config.clone())
     }
-    pub(crate) fn zsa_sinsemilla_chip_1(
+
+    fn ecc_chip(
+        &self,
+        circuit_version: CircuitVersion,
+    ) -> EccChip<OrchardFixedBases, PallasLookupRangeCheck4_5BConfig> {
+        EccChip::construct(self.ecc_config.clone(), circuit_version)
+    }
+
+    fn sinsemilla_chip_1(
         &self,
     ) -> SinsemillaChip<
         OrchardHashDomains,
         OrchardCommitDomains,
         OrchardFixedBases,
-        LookupRangeCheckConfig<pallas::Base, 10>,
+        PallasLookupRangeCheck4_5BConfig,
     > {
         SinsemillaChip::construct(self.sinsemilla_config_1.clone())
     }
-    pub(crate) fn zsa_sinsemilla_chip_2(
+
+    fn sinsemilla_chip_2(
         &self,
     ) -> SinsemillaChip<
         OrchardHashDomains,
         OrchardCommitDomains,
         OrchardFixedBases,
-        LookupRangeCheckConfig<pallas::Base, 10>,
+        PallasLookupRangeCheck4_5BConfig,
     > {
         SinsemillaChip::construct(self.sinsemilla_config_2.clone())
     }
-    pub(crate) fn zsa_merkle_chip_1(
+
+    fn merkle_chip_1(
         &self,
     ) -> MerkleChip<
         OrchardHashDomains,
         OrchardCommitDomains,
         OrchardFixedBases,
-        LookupRangeCheckConfig<pallas::Base, 10>,
+        PallasLookupRangeCheck4_5BConfig,
     > {
         MerkleChip::construct(self.merkle_config_1.clone())
     }
-    pub(crate) fn zsa_merkle_chip_2(
+
+    fn merkle_chip_2(
         &self,
     ) -> MerkleChip<
         OrchardHashDomains,
         OrchardCommitDomains,
         OrchardFixedBases,
-        LookupRangeCheckConfig<pallas::Base, 10>,
+        PallasLookupRangeCheck4_5BConfig,
     > {
         MerkleChip::construct(self.merkle_config_2.clone())
     }
-    pub(crate) fn zsa_commit_ivk_chip(&self) -> CommitIvkChip {
-        CommitIvkChip::construct(self.commit_ivk_config.clone())
+
+    fn poseidon_chip(&self) -> PoseidonChip<pallas::Base, 3, 2> {
+        PoseidonChip::construct(self.poseidon_config.clone())
     }
-    pub(crate) fn zsa_note_commit_chip_old(&self) -> NoteCommitChip {
+
+    fn note_commit_chip_old(&self) -> NoteCommitChip<PallasLookupRangeCheck4_5BConfig> {
         NoteCommitChip::construct(self.old_note_commit_config.clone())
     }
-    pub(crate) fn zsa_note_commit_chip_new(&self) -> NoteCommitChip {
+
+    fn note_commit_chip_new(&self) -> NoteCommitChip<PallasLookupRangeCheck4_5BConfig> {
         NoteCommitChip::construct(self.new_note_commit_config.clone())
     }
-    pub(crate) fn zsa_cond_swap_chip(
+
+    fn cond_swap_chip(&self) -> CondSwapChip<pallas::Base> {
+        CondSwapChip::construct(self.merkle_config_1.cond_swap_config().clone())
+    }
+}
+
+/// ZSA-specific circuit type that uses [`OrchardZSA`] for its constraint system.
+/// Lives alongside the vanilla [`Circuit`](crate::circuit::Circuit) and produces
+/// ZSA-aware proofs with split flag, asset base, and ZSA note commitment constraints.
+#[derive(Clone, Debug, Default)]
+pub struct ZsaCircuit {
+    pub(crate) witnesses: crate::circuit::Witnesses,
+}
+
+impl plonk::Circuit<pallas::Base> for ZsaCircuit {
+    type Config = ZsaConfig;
+    type FloorPlanner = halo2_proofs::circuit::floor_planner::V1;
+
+    fn without_witnesses(&self) -> Self {
+        Self::default()
+    }
+
+    fn configure(meta: &mut plonk::ConstraintSystem<pallas::Base>) -> Self::Config {
+        OrchardZSA::configure(meta)
+    }
+
+    fn synthesize(
         &self,
-    ) -> halo2_gadgets::utilities::cond_swap::CondSwapChip<pallas::Base> {
-        // CondSwapChip not configured in ZsaConfig; placeholder for now.
-        // In the full ZSA circuit, this should come from a configured CondSwapConfig.
-        unimplemented!("CondSwapChip configuration needed for ZSA circuit")
+        config: Self::Config,
+        layouter: impl Layouter<pallas::Base>,
+    ) -> Result<(), plonk::Error> {
+        OrchardZSA::synthesize(&self.witnesses, config, layouter)
+    }
+}
+
+impl ZsaCircuit {
+    /// Constructs a ZSA circuit from action components.
+    pub fn from_action_context(
+        spend: crate::builder::SpendInfo,
+        output_note: crate::Note,
+        alpha: pallas::Scalar,
+        rcv: crate::value::ValueCommitTrapdoor,
+    ) -> Option<Self> {
+        use crate::circuit::OrchardCircuit;
+        use crate::note::Rho;
+        let sender_address = spend.note.recipient();
+        let rho_old = spend.note.rho();
+        let psi_old = spend.note.psi();
+        let rcm_old = spend.note.rcm();
+        let psi_new = output_note.psi();
+        let rcm_new = output_note.rcm();
+        // psi_nf must match the ψ used off-circuit in `Note::nullifier`, which
+        // selects `rseed_split_note` for split notes. Using `note.psi()` here
+        // would be wrong for split notes (custom-asset dummy inputs).
+        let psi_nf = spend.note.psi_nf();
+        let asset = spend.note.asset();
+        let split_flag = spend.split_flag;
+        let merkle_path = spend
+            .merkle_path
+            .expect("a spend used as a circuit witness carries a Merkle path");
+
+        (Rho::from_nf_old(spend.note.nullifier(&spend.fvk)) == output_note.rho()).then(|| {
+            ZsaCircuit {
+                witnesses: crate::circuit::Witnesses {
+                    path: Value::known(merkle_path.auth_path()),
+                    pos: Value::known(merkle_path.position()),
+                    g_d_old: Value::known(sender_address.g_d()),
+                    pk_d_old: Value::known(*sender_address.pk_d()),
+                    v_old: Value::known(spend.note.value()),
+                    rho_old: Value::known(rho_old),
+                    psi_old: Value::known(psi_old),
+                    rcm_old: Value::known(rcm_old),
+                    cm_old: Value::known(spend.note.commitment()),
+                    alpha: Value::known(alpha),
+                    ak: Value::known(spend.fvk.clone().into()),
+                    nk: Value::known(*spend.fvk.nk()),
+                    rivk: Value::known(spend.fvk.rivk(spend.scope)),
+                    g_d_new: Value::known(output_note.recipient().g_d()),
+                    pk_d_new: Value::known(*output_note.recipient().pk_d()),
+                    v_new: Value::known(output_note.value()),
+                    psi_new: Value::known(psi_new),
+                    rcm_new: Value::known(rcm_new),
+                    rcv: Value::known(rcv),
+                    additional_zsa_witnesses: OrchardZSA::build_additional_zsa_witnesses(
+                        psi_nf, asset, split_flag,
+                    ),
+                },
+            }
+        })
     }
 }
 
@@ -307,6 +403,12 @@ impl OrchardCircuit for OrchardZSA {
         let add_config = AddChip::configure(meta, advices[7], advices[8], advices[6]);
 
         // Fixed columns for the Sinsemilla generator lookup table
+        //
+        // NB: the column-allocation order here is load-bearing. `table_idx`,
+        // then `table_range_check_tag`, then the two Sinsemilla lookup columns,
+        // must be allocated in exactly this order to match orchard 0.14's ZSA
+        // circuit; otherwise the fixed-column indices (and hence the verifying
+        // key) diverge from the reference verifier.
         let table_idx = meta.lookup_table_column();
         let table_range_check_tag = meta.lookup_table_column();
         let lookup = (
@@ -348,17 +450,21 @@ impl OrchardCircuit for OrchardZSA {
 
         // We have a lot of free space in the right-most advice columns; use one of them
         // for all of our range checks.
-        let range_check = LookupRangeCheckConfig::configure(meta, advices[9], table_idx);
+        let range_check = LookupRangeCheck4_5BConfig::configure_with_tag(
+            meta,
+            advices[9],
+            table_idx,
+            table_range_check_tag,
+        );
 
         // Configuration for curve point operations.
         // This uses 10 advice columns and spans the whole circuit.
-        let ecc_config =
-            EccChip::<OrchardFixedBases, LookupRangeCheckConfig<pallas::Base, 10>>::configure(
-                meta,
-                advices,
-                lagrange_coeffs,
-                range_check,
-            );
+        let ecc_config = EccChip::<OrchardFixedBases, PallasLookupRangeCheck4_5BConfig>::configure(
+            meta,
+            advices,
+            lagrange_coeffs,
+            range_check,
+        );
 
         // Configuration for the Poseidon hash.
         let poseidon_config = PoseidonChip::configure::<poseidon::P128Pow5T3>(
@@ -415,21 +521,21 @@ impl OrchardCircuit for OrchardZSA {
 
         // Configuration to handle decomposition and canonicity checking
         // for NoteCommit_old.
-        let old_note_commit_config =
-            NoteCommitChip::<LookupRangeCheckConfig<pallas::Base, 10>>::configure(
-                meta,
-                advices,
-                sinsemilla_config_1.clone(),
-            );
+        let old_note_commit_config = NoteCommitChip::<PallasLookupRangeCheck4_5BConfig>::configure(
+            meta,
+            advices,
+            sinsemilla_config_1.clone(),
+            true,
+        );
 
         // Configuration to handle decomposition and canonicity checking
         // for NoteCommit_new.
-        let new_note_commit_config =
-            NoteCommitChip::<LookupRangeCheckConfig<pallas::Base, 10>>::configure(
-                meta,
-                advices,
-                sinsemilla_config_2.clone(),
-            );
+        let new_note_commit_config = NoteCommitChip::<PallasLookupRangeCheck4_5BConfig>::configure(
+            meta,
+            advices,
+            sinsemilla_config_2.clone(),
+            true,
+        );
 
         ZsaConfig {
             primary,
@@ -462,7 +568,7 @@ impl OrchardCircuit for OrchardZSA {
             unpack(circuit.additional_zsa_witnesses.clone());
 
         // Construct the ECC chip.
-        let ecc_chip = config.zsa_ecc_chip(CircuitVersion::AnchoredBase);
+        let ecc_chip = config.ecc_chip(CircuitVersion::AnchoredBase);
 
         // Witness private inputs that are used across multiple checks.
         let (psi_nf, psi_old, rho_old, cm_old, g_d_old, ak_P, nk, v_old, v_new, asset) = {
@@ -564,7 +670,7 @@ impl OrchardCircuit for OrchardZSA {
                 .path
                 .map(|typed_path| typed_path.map(|node| node.inner()));
             let merkle_inputs = MerklePath::construct(
-                [config.zsa_merkle_chip_1(), config.zsa_merkle_chip_2()],
+                [config.merkle_chip_1(), config.merkle_chip_2()],
                 OrchardHashDomains::MerkleCrh,
                 circuit.pos,
                 path,
@@ -630,7 +736,7 @@ impl OrchardCircuit for OrchardZSA {
                 v_net_magnitude_sign.clone(),
                 rcv,
                 Some(ZsaValueCommitParams {
-                    sinsemilla_chip: config.zsa_sinsemilla_chip_1(),
+                    sinsemilla_chip: config.sinsemilla_chip_1(),
                     asset_base: asset.clone(),
                 }),
             )?;
@@ -650,15 +756,15 @@ impl OrchardCircuit for OrchardZSA {
         let nf_old = {
             let nf_old = derive_nullifier(
                 layouter.namespace(|| "nf_old = DeriveNullifier_nk(rho_old, psi_nf, cm_old)"),
-                config.zsa_poseidon_chip(),
-                config.zsa_add_chip(),
+                config.poseidon_chip(),
+                config.add_chip(),
                 ecc_chip.clone(),
                 rho_old.clone(),
                 &psi_nf,
                 &cm_old,
                 nk.clone(),
                 Some(ZsaNullifierParams {
-                    cond_swap_chip: config.zsa_cond_swap_chip(),
+                    cond_swap_chip: config.cond_swap_chip(),
                     split_flag: split_flag.clone(),
                 }),
             )?;
@@ -703,9 +809,9 @@ impl OrchardCircuit for OrchardZSA {
                 )?;
 
                 commit_ivk(
-                    config.zsa_sinsemilla_chip_1(),
+                    config.sinsemilla_chip_1(),
                     ecc_chip.clone(),
-                    config.zsa_commit_ivk_chip(),
+                    config.commit_ivk_chip(),
                     layouter.namespace(|| "CommitIvk"),
                     ak,
                     nk,
@@ -756,9 +862,9 @@ impl OrchardCircuit for OrchardZSA {
                 layouter.namespace(|| {
                     "g★_d || pk★_d || i2lebsp_{64}(v) || i2lebsp_{255}(rho) || i2lebsp_{255}(psi)"
                 }),
-                config.zsa_sinsemilla_chip_1(),
-                config.zsa_ecc_chip(CircuitVersion::AnchoredBase),
-                config.zsa_note_commit_chip_old(),
+                config.sinsemilla_chip_1(),
+                config.ecc_chip(CircuitVersion::AnchoredBase),
+                config.note_commit_chip_old(),
                 g_d_old.inner(),
                 pk_d_old.inner(),
                 v_old.clone(),
@@ -766,7 +872,7 @@ impl OrchardCircuit for OrchardZSA {
                 psi_old.clone(),
                 rcm_old,
                 Some(ZsaNoteCommitParams {
-                    cond_swap_chip: config.zsa_cond_swap_chip(),
+                    cond_swap_chip: config.cond_swap_chip(),
                     asset: asset.inner().clone(),
                     is_zatoshi_asset: is_zatoshi_asset.clone(),
                 }),
@@ -824,9 +930,9 @@ impl OrchardCircuit for OrchardZSA {
                 layouter.namespace(|| {
                     "g★_d || pk★_d || i2lebsp_{64}(v) || i2lebsp_{255}(rho) || i2lebsp_{255}(psi)"
                 }),
-                config.zsa_sinsemilla_chip_2(),
-                config.zsa_ecc_chip(CircuitVersion::AnchoredBase),
-                config.zsa_note_commit_chip_new(),
+                config.sinsemilla_chip_2(),
+                config.ecc_chip(CircuitVersion::AnchoredBase),
+                config.note_commit_chip_new(),
                 g_d_new.inner(),
                 pk_d_new.inner(),
                 v_new.clone(),
@@ -834,7 +940,7 @@ impl OrchardCircuit for OrchardZSA {
                 psi_new,
                 rcm_new,
                 Some(ZsaNoteCommitParams {
-                    cond_swap_chip: config.zsa_cond_swap_chip(),
+                    cond_swap_chip: config.cond_swap_chip(),
                     asset: asset.inner().clone(),
                     is_zatoshi_asset: is_zatoshi_asset.clone(),
                 }),
@@ -987,9 +1093,79 @@ impl OrchardCircuit for OrchardZSA {
             split_flag,
         })
     }
+
+    fn proof_size(num_actions: usize) -> usize {
+        crate::Proof::expected_zsa_proof_size(num_actions)
+    }
+
+    fn circuit_version() -> OrchardCircuitVersion {
+        OrchardCircuitVersion::FixedPostNu6_2
+    }
 }
 
 #[cfg(test)]
+mod production_compatibility {
+    use std::io::Read;
+
+    use crate::{
+        circuit::{VerifyingKey, ZsaInstance},
+        note::{ExtractedNoteCommitment, Nullifier},
+        value::ValueCommitment,
+        Anchor, Proof,
+    };
+
+    fn read_32_bytes(reader: &mut &[u8]) -> [u8; 32] {
+        let mut bytes = [0; 32];
+        reader.read_exact(&mut bytes).unwrap();
+        bytes
+    }
+
+    fn read_bool(reader: &mut &[u8]) -> bool {
+        let mut byte = [0];
+        reader.read_exact(&mut byte).unwrap();
+        match byte[0] {
+            0 => false,
+            1 => true,
+            _ => panic!("non-boolean production fixture byte"),
+        }
+    }
+
+    #[test]
+    fn production_fixed_post_nu6_2_key_and_proof_are_unchanged() {
+        let vk = VerifyingKey::build_zsa();
+        assert_eq!(
+            format!("{}\n", vk.pinned()),
+            include_str!("circuit_description_zsa").replace("\r\n", "\n"),
+        );
+
+        let mut fixture = &include_bytes!("../circuit/circuit_proof_test_case_zsa.bin")[..];
+        let anchor = Anchor::from_bytes(read_32_bytes(&mut fixture)).unwrap();
+        let cv_net = ValueCommitment::from_bytes(&read_32_bytes(&mut fixture)).unwrap();
+        let nf_old = Nullifier::from_bytes(&read_32_bytes(&mut fixture)).unwrap();
+        let rk = read_32_bytes(&mut fixture).try_into().unwrap();
+        let cmx = ExtractedNoteCommitment::from_bytes(&read_32_bytes(&mut fixture)).unwrap();
+        let instance = ZsaInstance::from_parts(
+            anchor,
+            cv_net,
+            nf_old,
+            rk,
+            cmx,
+            read_bool(&mut fixture),
+            read_bool(&mut fixture),
+            read_bool(&mut fixture),
+        )
+        .unwrap();
+        let proof = Proof::new(fixture.to_vec());
+
+        assert_eq!(proof.as_ref().len(), 5120);
+        assert!(proof.verify(&vk, &[instance]).is_ok());
+    }
+}
+
+// These pre-0.15 implementation-detail tests require a separate mechanical
+// port. Consensus compatibility is covered above against the deployed key and
+// proof fixture.
+#[cfg(all(test, any()))]
 mod tests {
     use alloc::vec::Vec;
     use core::iter;
@@ -1003,10 +1179,9 @@ mod tests {
 
     use crate::{
         builder::SpendInfo,
-        bundle::Flags,
         circuit::{
-            AdditionalZsaWitnesses, Circuit, Instance, Proof, ProvingKey, VerifyingKey, Witnesses,
-            K,
+            AdditionalZsaWitnesses, Circuit, Proof, ProvingKey, VerifyingKey, Witnesses,
+            ZsaInstance, K,
         },
         keys::{FullViewingKey, Scope, SpendValidatingKey, SpendingKey},
         note::{commitment::NoteCommitTrapdoor, AssetBase, Note, NoteCommitment, Nullifier, Rho},
@@ -1016,7 +1191,9 @@ mod tests {
         zsa::flavor::OrchardZSA,
     };
 
-    fn generate_dummy_circuit_instance<R: RngCore>(mut rng: R) -> (Circuit<OrchardZSA>, Instance) {
+    fn generate_dummy_circuit_instance<R: RngCore>(
+        mut rng: R,
+    ) -> (Circuit<OrchardZSA>, ZsaInstance) {
         let (_, fvk, spent_note) = Note::dummy(&mut rng, None);
 
         let sender_address = spent_note.recipient();
@@ -1071,7 +1248,7 @@ mod tests {
                 },
                 phantom: core::marker::PhantomData,
             },
-            Instance {
+            ZsaInstance {
                 anchor,
                 cv_net,
                 nf_old,
@@ -1093,7 +1270,7 @@ mod tests {
             .map(|()| generate_dummy_circuit_instance(&mut rng))
             .unzip();
 
-        let vk = VerifyingKey::build::<OrchardZSA>();
+        let vk = VerifyingKey::build_zsa();
 
         // Test that the pinned verification key (representing the circuit)
         // is as expected.
@@ -1133,8 +1310,8 @@ mod tests {
             );
         }
 
-        let pk = ProvingKey::build::<OrchardZSA>();
-        let proof = Proof::create(&pk, &circuits, &instances, &mut rng).unwrap();
+        let pk = ProvingKey::build_zsa();
+        let proof = Proof::create_zsa(&pk, &circuits, &instances, &mut rng).unwrap();
         assert!(proof.verify(&vk, &instances).is_ok());
         assert_eq!(proof.0.len(), expected_proof_size);
     }
@@ -1144,11 +1321,11 @@ mod tests {
         use std::fs;
         use std::io::{Read, Write};
 
-        let vk = VerifyingKey::build::<OrchardZSA>();
+        let vk = VerifyingKey::build_zsa();
 
         fn write_test_case<W: Write>(
             mut w: W,
-            instance: &Instance,
+            instance: &ZsaInstance,
             proof: &Proof,
         ) -> std::io::Result<()> {
             w.write_all(&instance.anchor.to_bytes())?;
@@ -1166,7 +1343,7 @@ mod tests {
             Ok(())
         }
 
-        fn read_test_case<R: Read>(mut r: R) -> std::io::Result<(Instance, Proof)> {
+        fn read_test_case<R: Read>(mut r: R) -> std::io::Result<(ZsaInstance, Proof)> {
             let read_32_bytes = |r: &mut R| {
                 let mut ret = [0u8; 32];
                 r.read_exact(&mut ret).unwrap();
@@ -1191,13 +1368,15 @@ mod tests {
             let enable_spend = read_bool(&mut r);
             let enable_output = read_bool(&mut r);
             let enable_zsa = read_bool(&mut r);
-            let instance = Instance::from_parts(
+            let instance = ZsaInstance::from_parts(
                 anchor,
                 cv_net,
                 nf_old,
                 rk,
                 cmx,
-                Flags::from_parts(enable_spend, enable_output, enable_zsa),
+                enable_spend,
+                enable_output,
+                enable_zsa,
             )
             .ok_or_else(|| {
                 std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid instance")
@@ -1217,7 +1396,7 @@ mod tests {
                 let (circuit, instance) = generate_dummy_circuit_instance(OsRng);
                 let instances = &[instance.clone()];
 
-                let pk = ProvingKey::build::<OrchardZSA>();
+                let pk = ProvingKey::build_zsa();
                 let proof = Proof::create(&pk, &[circuit], instances, &mut rng).unwrap();
                 assert!(proof.verify(&vk, instances).is_ok());
 
@@ -1261,7 +1440,7 @@ mod tests {
 
     fn check_proof_of_orchard_circuit(
         circuit: &Circuit<OrchardZSA>,
-        instance: &Instance,
+        instance: &ZsaInstance,
         should_pass: bool,
     ) {
         let proof_verify = MockProver::run(
@@ -1286,7 +1465,7 @@ mod tests {
         is_zatoshi_asset: bool,
         split_flag: bool,
         mut rng: R,
-    ) -> (Circuit<OrchardZSA>, Instance) {
+    ) -> (Circuit<OrchardZSA>, ZsaInstance) {
         // We cannot create a split note with a zatoshi asset.
         assert!(!(is_zatoshi_asset && split_flag));
 
@@ -1309,6 +1488,7 @@ mod tests {
                 NoteValue::from_raw(40),
                 asset_base,
                 rho,
+                NoteVersion::V3ZSA,
                 &mut rng,
             );
             let spent_note = if split_flag {
@@ -1348,13 +1528,20 @@ mod tests {
             let fvk: FullViewingKey = (&sk).into();
             let sender_address = fvk.address_at(0u32, Scope::External);
 
-            Note::new(sender_address, output_value, asset_base, rho, &mut rng)
+            Note::new(
+                sender_address,
+                output_value,
+                asset_base,
+                rho,
+                NoteVersion::V3ZSA,
+                &mut rng,
+            )
         };
 
         let cmx = output_note.commitment().into();
 
         let rcv = ValueCommitTrapdoor::random(&mut rng);
-        let cv_net = ValueCommitment::derive(v_net, rcv.clone(), asset_base);
+        let cv_net = ValueCommitment::derive_with_asset(v_net, rcv.clone(), asset_base);
 
         let path = MerklePath::dummy(&mut rng);
         let anchor = path.root(spent_note.commitment().into());
@@ -1378,7 +1565,7 @@ mod tests {
                 ),
                 phantom: core::marker::PhantomData,
             },
-            Instance {
+            ZsaInstance {
                 anchor,
                 cv_net,
                 nf_old,
@@ -1418,7 +1605,7 @@ mod tests {
 
             // Set cv_net to be zero
             // The proof should fail
-            let instance_wrong_cv_net = Instance {
+            let instance_wrong_cv_net = ZsaInstance {
                 anchor: instance.anchor,
                 cv_net: ValueCommitment::from_bytes(&[0u8; 32]).unwrap(),
                 nf_old: instance.nf_old,
@@ -1432,7 +1619,7 @@ mod tests {
 
             // Set rk_pub to be a dummy VerificationKey
             // The proof should fail
-            let instance_wrong_rk = Instance {
+            let instance_wrong_rk = ZsaInstance {
                 anchor: instance.anchor,
                 cv_net: instance.cv_net.clone(),
                 nf_old: instance.nf_old,
@@ -1476,7 +1663,7 @@ mod tests {
 
             // Set cmx_pub to be a random NoteCommitment
             // The proof should fail
-            let instance_wrong_cmx_pub = Instance {
+            let instance_wrong_cmx_pub = ZsaInstance {
                 anchor: instance.anchor,
                 cv_net: instance.cv_net.clone(),
                 nf_old: instance.nf_old,
@@ -1490,7 +1677,7 @@ mod tests {
 
             // Set nf_old_pub to be a random Nullifier
             // The proof should fail
-            let instance_wrong_nf_old_pub = Instance {
+            let instance_wrong_nf_old_pub = ZsaInstance {
                 anchor: instance.anchor,
                 cv_net: instance.cv_net.clone(),
                 nf_old: Nullifier::dummy(&mut rng),
@@ -1544,7 +1731,7 @@ mod tests {
             // If asset is not equal to the zatoshi asset, set enable_zsa = 0
             // The proof should fail
             if !is_zatoshi_asset {
-                let instance_wrong_enable_zsa = Instance {
+                let instance_wrong_enable_zsa = ZsaInstance {
                     anchor: instance.anchor,
                     cv_net: instance.cv_net.clone(),
                     nf_old: instance.nf_old,

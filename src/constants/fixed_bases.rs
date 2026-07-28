@@ -49,6 +49,10 @@ pub const ZSA_ASSET_BASE_PERSONALIZATION: &str = "z.cash:OrchardZSA";
 /// SWU hash-to-curve personalization for the note commitment generator
 pub const NOTE_COMMITMENT_PERSONALIZATION: &str = "z.cash:Orchard-NoteCommit";
 
+/// SWU hash-to-curve personalization for the ZSA note commitment generator
+#[cfg(feature = "zsa")]
+pub const NOTE_ZSA_COMMITMENT_PERSONALIZATION: &str = "z.cash:ZSA-NoteCommit";
+
 /// SWU hash-to-curve personalization for the IVK commitment generator
 pub const COMMIT_IVK_PERSONALIZATION: &str = "z.cash:Orchard-CommitIvk";
 

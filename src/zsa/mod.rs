@@ -12,7 +12,7 @@
 
 #[cfg(feature = "zsa")]
 pub mod burn;
-#[cfg(feature = "zsa-circuit")]
+#[cfg(all(feature = "zsa", feature = "circuit"))]
 pub mod circuit;
 #[cfg(feature = "zsa")]
 pub mod commitments;
@@ -21,6 +21,8 @@ mod domain;
 pub mod flavor;
 #[cfg(feature = "zsa")]
 pub mod issuance;
+#[cfg(all(feature = "zsa", feature = "circuit"))]
+pub(crate) mod note_commit;
 pub(crate) mod reference_keys;
 
 pub use domain::OrchardZSADomain;

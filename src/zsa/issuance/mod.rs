@@ -228,7 +228,7 @@ impl IssueAction {
     /// * `IssueBundleIkMismatchAssetBase`: The provided `ik` is not used to derive the
     ///   `AssetBase` for **all** internal notes.
     /// * `AssetBaseCannotBeIdentityPoint`: The derived `AssetBase` is the identity point of the
-    ///    Pallas curve.
+    ///   Pallas curve.
     /// * `IssueActionWithoutNoteNotFinalized`: The `IssueAction` contains no notes and is not finalized.
     fn verify(&self, ik: &IssueValidatingKey<ZSASchnorr>) -> Result<(AssetBase, NoteValue), Error> {
         if self.notes.is_empty() && !self.is_finalized() {
@@ -914,6 +914,7 @@ impl fmt::Display for Error {
 
 #[cfg(test)]
 mod tests {
+    use super::rho_for_issuance_note;
     use crate::{
         issuance::Error::{
             CannotBeFirstIssuance, IncorrectRhoDerivation, InvalidIssueBundleSig,
@@ -929,7 +930,7 @@ mod tests {
             IssueBundle, IssueInfo, Signed,
         },
         keys::{FullViewingKey, Scope, SpendingKey},
-        note::{rho_for_issuance_note, AssetBase, AssetId, Nullifier, Rho},
+        note::{AssetBase, AssetId, Nullifier},
         value::NoteValue,
         Address, Note,
     };
@@ -1609,7 +1610,7 @@ mod tests {
         let mut rng = OsRng;
         let (mut signed, _) = new_signed_bundle(&params, b"Asset description", 5);
 
-        let note = Note::new(
+        let note = Note::new_with_asset(
             params.recipient,
             NoteValue::from_raw(5),
             AssetBase::custom(&AssetId::new_v0(
@@ -1638,7 +1639,7 @@ mod tests {
         let incorrect_isk = IssueAuthKey::<ZSASchnorr>::random(&mut rng);
         let incorrect_ik = IssueValidatingKey::from(&incorrect_isk);
 
-        let note = Note::new(
+        let note = Note::new_with_asset(
             params.recipient,
             NoteValue::from_raw(55),
             AssetBase::custom(&AssetId::new_v0(&incorrect_ik, &asset_desc_hash(b"Asset"))),
@@ -1658,7 +1659,7 @@ mod tests {
     #[test]
     fn finalize_flag_serialization() {
         let mut rng = OsRng;
-        let (_, _, note) = Note::dummy(&mut rng, None);
+        let (_, _, note) = Note::dummy(&mut rng, None, crate::NoteVersion::V3);
 
         let asset_desc_hash = asset_desc_hash(b"Asset description");
 
@@ -1875,7 +1876,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "circuit")]
+    #[cfg(all(feature = "circuit", any()))]
     fn verify_rho_computation_for_issuance_notes() {
         use crate::{
             builder::{Builder, BundleType},

@@ -90,8 +90,15 @@ where
     let pk_d = get_validated_pk_d(&diversifier)?;
     let recipient = Address::from_parts(diversifier, pk_d);
 
-    let note =
-        Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, rseed).into_option()?;
+    let note = Note::from_parts(
+        recipient,
+        value,
+        AssetBase::zatoshi(),
+        rho,
+        rseed,
+        crate::NoteVersion::V3ZSA,
+    )
+    .into_option()?;
 
     Some((note, recipient))
 }
