@@ -50,8 +50,8 @@ visibility = "0.1.1"
 secp256k1 = { version = "0.29", optional = true, default-features = false, features = ["alloc", "rand"] }
 
 # Circuit
-halo2_gadgets = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "d687ce0e3e913549cab370ec66765e6d59d4612f", optional = true, default-features = false }
-halo2_proofs = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "d687ce0e3e913549cab370ec66765e6d59d4612f", optional = true, default-features = false, features = ["batch", "floor-planner-v1-legacy-pdqsort"] }
+halo2_gadgets = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "dcdbd1df2b30fd8d709c1a7c4ad9c4e091789d00", optional = true, default-features = false }
+halo2_proofs = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "dcdbd1df2b30fd8d709c1a7c4ad9c4e091789d00", optional = true, default-features = false, features = ["batch", "floor-planner-v1-legacy-pdqsort"] }
 
 # Boilerplate
 getset = "0.1"
@@ -68,7 +68,7 @@ plotters = { version = "0.3.0", optional = true }
 
 [dev-dependencies]
 criterion = "0.4" # 0.5 depends on clap 4 which has MSRV 1.70
-halo2_gadgets = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "d687ce0e3e913549cab370ec66765e6d59d4612f", features = ["test-dependencies"] }
+halo2_gadgets = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "dcdbd1df2b30fd8d709c1a7c4ad9c4e091789d00", features = ["test-dependencies"] }
 hex = "0.4"
 proptest = ">=1.0.0, <1.7.0"
 rand_chacha = "0.3"
@@ -113,9 +113,9 @@ required-features = ["circuit"]
 [patch.crates-io]
 zcash_spec = { git = "https://github.com/zcash-shielded-assets/zcash_spec", rev = "d5e84264d2ad0646b587a837f4e2424ca64d3a05" }
 sinsemilla = { git = "https://github.com/zcash/sinsemilla", rev = "aabb707e862bc3d7b803c77d14e5a771bcee3e8c" }
-halo2_gadgets = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "d687ce0e3e913549cab370ec66765e6d59d4612f" }
-halo2_proofs = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "d687ce0e3e913549cab370ec66765e6d59d4612f" }
-halo2_poseidon = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "d687ce0e3e913549cab370ec66765e6d59d4612f" }
+halo2_gadgets = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "dcdbd1df2b30fd8d709c1a7c4ad9c4e091789d00" }
+halo2_proofs = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "dcdbd1df2b30fd8d709c1a7c4ad9c4e091789d00" }
+halo2_poseidon = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "dcdbd1df2b30fd8d709c1a7c4ad9c4e091789d00" }
 
 [profile.release]
 debug = true
