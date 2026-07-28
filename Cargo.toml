@@ -42,7 +42,7 @@ poseidon = { package = "halo2_poseidon", version = "0.1" }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 sinsemilla = "0.1"
 subtle = { version = "2.6", default-features = false }
-zcash_note_encryption = { git = "https://github.com/zcash-shielded-assets/zcash_note_encryption", branch = "zsa-domain" }
+zcash_note_encryption = { git = "https://github.com/zcash-shielded-assets/zcash_note_encryption", rev = "bc7a9370e1a7253cf496f24aa0bd4d0e49c3977e" }
 incrementalmerkletree = "0.8.1"
 zcash_spec = "0.2.1"
 zip32 = { version = "0.2.0", default-features = false }
@@ -72,7 +72,7 @@ halo2_gadgets = { git = "https://github.com/zcash-shielded-assets/halo2", rev = 
 hex = "0.4"
 proptest = ">=1.0.0, <1.7.0"
 rand_chacha = "0.3"
-zcash_note_encryption = { git = "https://github.com/zcash-shielded-assets/zcash_note_encryption", branch = "zsa-domain", features = ["pre-zip-212"] }
+zcash_note_encryption = { git = "https://github.com/zcash-shielded-assets/zcash_note_encryption", rev = "bc7a9370e1a7253cf496f24aa0bd4d0e49c3977e", features = ["pre-zip-212"] }
 incrementalmerkletree = { version = "0.8.1", features = ["test-dependencies"] }
 shardtree = "0.6"
 
