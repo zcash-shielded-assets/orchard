@@ -90,7 +90,8 @@ where
     let pk_d = get_validated_pk_d(&diversifier)?;
     let recipient = Address::from_parts(diversifier, pk_d);
 
-    let note = Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, rseed).into_option()?;
+    let note =
+        Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, rseed).into_option()?;
 
     Some((note, recipient))
 }
@@ -169,25 +170,17 @@ impl Domain for OrchardZSADomain {
         epk.agree(ivk)
     }
 
-    fn kdf(
-        secret: Self::SharedSecret,
-        ephemeral_key: &EphemeralKeyBytes,
-    ) -> Self::SymmetricKey {
+    fn kdf(secret: Self::SharedSecret, ephemeral_key: &EphemeralKeyBytes) -> Self::SymmetricKey {
         secret.kdf_orchard(ephemeral_key)
     }
 
-    fn note_plaintext_bytes(
-        note: &Self::Note,
-        memo: &Self::Memo,
-    ) -> Self::NotePlaintextBytes {
+    fn note_plaintext_bytes(note: &Self::Note, memo: &Self::Memo) -> Self::NotePlaintextBytes {
         let mut np = [0; NOTE_PLAINTEXT_SIZE];
         np[NOTE_VERSION_OFFSET] = NOTE_VERSION_BYTE_V3;
         np[NOTE_DIVERSIFIER_OFFSET..NOTE_VALUE_OFFSET]
             .copy_from_slice(note.recipient().diversifier().as_array());
-        np[NOTE_VALUE_OFFSET..NOTE_RSEED_OFFSET]
-            .copy_from_slice(&note.value().to_bytes());
-        np[NOTE_RSEED_OFFSET..COMPACT_NOTE_SIZE_VANILLA]
-            .copy_from_slice(note.rseed().as_bytes());
+        np[NOTE_VALUE_OFFSET..NOTE_RSEED_OFFSET].copy_from_slice(&note.value().to_bytes());
+        np[NOTE_RSEED_OFFSET..COMPACT_NOTE_SIZE_VANILLA].copy_from_slice(note.rseed().as_bytes());
         // ZSA: 32 bytes for asset_desc_hash — for now, zero-fill.
         // When full AssetBase support is added, serialize it here.
         // np[COMPACT_NOTE_SIZE_VANILLA..COMPACT_NOTE_SIZE_ZSA] = ...
@@ -256,15 +249,11 @@ impl Domain for OrchardZSADomain {
         ))
     }
 
-    fn extract_pk_d(
-        out_plaintext: &OutPlaintextBytes,
-    ) -> Option<Self::DiversifiedTransmissionKey> {
+    fn extract_pk_d(out_plaintext: &OutPlaintextBytes) -> Option<Self::DiversifiedTransmissionKey> {
         DiversifiedTransmissionKey::from_bytes(out_plaintext.0[0..32].try_into().unwrap()).into()
     }
 
-    fn extract_esk(
-        out_plaintext: &OutPlaintextBytes,
-    ) -> Option<Self::EphemeralSecretKey> {
+    fn extract_esk(out_plaintext: &OutPlaintextBytes) -> Option<Self::EphemeralSecretKey> {
         EphemeralSecretKey::from_bytes(out_plaintext.0[32..OUT_PLAINTEXT_SIZE].try_into().unwrap())
             .into()
     }

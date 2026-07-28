@@ -1425,7 +1425,9 @@ impl YCanonicity {
 /// Sinsemilla configuration.
 #[allow(non_snake_case)]
 #[derive(Clone, Debug)]
-pub struct NoteCommitConfig<Lookup: PallasLookupRangeCheck = LookupRangeCheckConfig<pallas::Base, 10>> {
+pub struct NoteCommitConfig<
+    Lookup: PallasLookupRangeCheck = LookupRangeCheckConfig<pallas::Base, 10>,
+> {
     pub(crate) b: DecomposeB,
     pub(crate) d: DecomposeD,
     pub(crate) e: DecomposeE,
@@ -1444,7 +1446,8 @@ pub struct NoteCommitConfig<Lookup: PallasLookupRangeCheck = LookupRangeCheckCon
 
 /// A Halo 2 chip that proves correct evaluation of the `NoteCommit` gadget.
 #[derive(Clone, Debug)]
-pub struct NoteCommitChip<Lookup: PallasLookupRangeCheck = LookupRangeCheckConfig<pallas::Base, 10>> {
+pub struct NoteCommitChip<Lookup: PallasLookupRangeCheck = LookupRangeCheckConfig<pallas::Base, 10>>
+{
     config: NoteCommitConfig<Lookup>,
 }
 
@@ -2387,6 +2390,9 @@ mod tests {
 #[cfg(feature = "zsa-circuit")]
 pub struct ZsaNoteCommitParams {
     pub cond_swap_chip: halo2_gadgets::utilities::cond_swap::CondSwapChip<pallas::Base>,
-    pub asset: halo2_gadgets::ecc::NonIdentityPoint<pallas::Affine, halo2_gadgets::ecc::chip::EccChip<crate::constants::OrchardFixedBases>>,
+    pub asset: halo2_gadgets::ecc::NonIdentityPoint<
+        pallas::Affine,
+        halo2_gadgets::ecc::chip::EccChip<crate::constants::OrchardFixedBases>,
+    >,
     pub is_zatoshi_asset: halo2_proofs::circuit::AssignedCell<pallas::Base, pallas::Base>,
 }

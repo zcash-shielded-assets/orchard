@@ -10,17 +10,17 @@
 //! **WARNING**: This is an alpha feature. The entire `zsa` module can be
 //! deleted without affecting the vanilla / Ironwood paths.
 
-mod domain;
-#[cfg(feature = "zsa")]
-pub mod issuance;
 #[cfg(feature = "zsa")]
 pub mod burn;
-#[cfg(feature = "zsa")]
-pub mod commitments;
 #[cfg(feature = "zsa-circuit")]
 pub mod circuit;
-pub(crate) mod reference_keys;
+#[cfg(feature = "zsa")]
+pub mod commitments;
+mod domain;
 #[cfg(feature = "zsa")]
 pub mod flavor;
+#[cfg(feature = "zsa")]
+pub mod issuance;
+pub(crate) mod reference_keys;
 
 pub use domain::OrchardZSADomain;

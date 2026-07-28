@@ -1,6 +1,6 @@
 [package]
 name = "orchard"
-version = "0.14.0"
+version = "0.15.4"
 authors = [
     "Sean Bowe <ewillbefull@gmail.com>",
     "Jack Grigg <thestr4d@gmail.com>",
@@ -32,7 +32,7 @@ group = "0.13"
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
 lazy_static = "1"
 memuse = { version = "0.2.2", default-features = false }
-pasta_curves = "0.5"
+pasta_curves = { version = "0.5.2", features = ["glv"] }
 proptest = { version = ">=1.0.0, <1.7.0", optional = true }
 rand = { version = "0.8", default-features = false }
 rand_core = { version = "0.6", default-features = false }
@@ -71,6 +71,7 @@ criterion = "0.4" # 0.5 depends on clap 4 which has MSRV 1.70
 halo2_gadgets = { git = "https://github.com/zcash-shielded-assets/halo2", rev = "d687ce0e3e913549cab370ec66765e6d59d4612f", features = ["test-dependencies"] }
 hex = "0.4"
 proptest = ">=1.0.0, <1.7.0"
+rand_chacha = "0.3"
 zcash_note_encryption = { git = "https://github.com/zcash-shielded-assets/zcash_note_encryption", branch = "zsa-domain", features = ["pre-zip-212"] }
 incrementalmerkletree = { version = "0.8.1", features = ["test-dependencies"] }
 shardtree = "0.6"
@@ -90,6 +91,7 @@ unstable-frost = []
 unstable-voting-circuits = []
 multicore = ["halo2_proofs?/multicore"]
 dev-graph = ["halo2_proofs?/dev-graph", "image", "plotters"]
+verifier-fingerprint = ["circuit", "halo2_proofs/unstable-verifier-fingerprint"]
 test-dependencies = ["proptest", "rand/std"]
 zsa = ["dep:secp256k1"]
 zsa-circuit = ["zsa", "circuit"]

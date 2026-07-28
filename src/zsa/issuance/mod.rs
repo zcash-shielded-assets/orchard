@@ -26,8 +26,8 @@ use ff::PrimeField;
 use crate::{
     note::{AssetBase, AssetId, ExtractedNoteCommitment, Nullifier, Rho},
     spec::{to_base, PrfExpand},
-    zsa::commitments::{hash_issue_bundle_auth_data, hash_issue_bundle_txid_data},
     value::NoteValue,
+    zsa::commitments::{hash_issue_bundle_auth_data, hash_issue_bundle_txid_data},
     Address, Note,
 };
 
@@ -585,12 +585,7 @@ impl IssueBundle<AwaitingSighash> {
 }
 
 fn create_reference_note(asset: AssetBase, mut rng: impl RngCore) -> Note {
-    Note::new_issue_note(
-        ReferenceKeys::recipient(),
-        NoteValue::ZERO,
-        asset,
-        &mut rng,
-    )
+    Note::new_issue_note(ReferenceKeys::recipient(), NoteValue::ZERO, asset, &mut rng)
 }
 
 impl IssueBundle<Prepared> {

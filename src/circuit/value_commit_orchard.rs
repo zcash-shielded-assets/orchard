@@ -19,9 +19,7 @@ pub struct ZsaValueCommitParams<Lookup: PallasLookupRangeCheck> {
 pub(crate) mod gadgets {
     use super::*;
 
-    use crate::constants::{
-        fixed_bases::OrchardShortScalarBases, OrchardFixedBasesFull,
-    };
+    use crate::constants::{fixed_bases::OrchardShortScalarBases, OrchardFixedBasesFull};
 
     use halo2_gadgets::{
         ecc::{FixedPoint, FixedPointShort, Point, ScalarFixed, ScalarFixedShort, ScalarVar},

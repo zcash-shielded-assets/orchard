@@ -222,7 +222,13 @@ where
     assign_free_advice(
         layouter,
         column,
-        asset.map(|a| if bool::from(a.is_zatoshi()) { pasta_curves::pallas::Base::one() } else { pasta_curves::pallas::Base::zero() }),
+        asset.map(|a| {
+            if bool::from(a.is_zatoshi()) {
+                pasta_curves::pallas::Base::one()
+            } else {
+                pasta_curves::pallas::Base::zero()
+            }
+        }),
     )
 }
 
@@ -238,6 +244,12 @@ where
     assign_free_advice(
         layouter,
         column,
-        split_flag.map(|f| if f { pasta_curves::pallas::Base::one() } else { pasta_curves::pallas::Base::zero() }),
+        split_flag.map(|f| {
+            if f {
+                pasta_curves::pallas::Base::one()
+            } else {
+                pasta_curves::pallas::Base::zero()
+            }
+        }),
     )
 }
