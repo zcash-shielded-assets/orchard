@@ -128,12 +128,12 @@ harness = false
 required-features = ["circuit"]
 
 [patch.crates-io]
-# Local integration dependencies; replace paths with immutable revisions after publication.
+# Pin the production-compatible integration dependencies.
 zcash_spec = { git = "https://github.com/zcash-shielded-assets/zcash_spec", rev = "d5e84264d2ad0646b587a837f4e2424ca64d3a05" }
-halo2_gadgets = { path = "../halo2-integration/halo2_gadgets" }
-halo2_proofs = { path = "../halo2-integration/halo2_proofs" }
-halo2_poseidon = { path = "../halo2-integration/halo2_poseidon" }
-zcash_note_encryption = { path = "../../zcash_note_encryption-integration" }
+halo2_gadgets = { git = "https://github.com/zcash-shielded-assets/halo2.git", rev = "0e3f1ea9dcba44fa4cd213b3f06b2aee3fc6e90e" }
+halo2_proofs = { git = "https://github.com/zcash-shielded-assets/halo2.git", rev = "0e3f1ea9dcba44fa4cd213b3f06b2aee3fc6e90e" }
+halo2_poseidon = { git = "https://github.com/zcash-shielded-assets/halo2.git", rev = "0e3f1ea9dcba44fa4cd213b3f06b2aee3fc6e90e" }
+zcash_note_encryption = { git = "https://github.com/zcash-shielded-assets/zcash_note_encryption.git", rev = "54d2360c3b16561d7c00167dc0af7358251469c9" }
 
 [profile.release]
 debug = true
