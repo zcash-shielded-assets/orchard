@@ -1,7 +1,7 @@
 use core::fmt;
 
 use nonempty::NonEmpty;
-use rand::{CryptoRng, RngCore};
+use rand::{CryptoRng, Rng};
 
 use crate::{
     bundle::{Authorization, Authorized, EffectsOnly},
@@ -223,7 +223,7 @@ impl<V, D: zcash_note_encryption::Domain> crate::Bundle<Unbound, V, D> {
     /// Verifies the given sighash with every `spend_auth_sig`, and then binds the bundle.
     ///
     /// Returns `None` if the given sighash does not validate against every `spend_auth_sig`.
-    pub fn apply_binding_signature<R: RngCore + CryptoRng>(
+    pub fn apply_binding_signature<R: Rng + CryptoRng>(
         self,
         sighash: [u8; 32],
         rng: R,

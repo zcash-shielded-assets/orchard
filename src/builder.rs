@@ -8,7 +8,7 @@ use core::marker::PhantomData;
 
 use ff::Field;
 use pasta_curves::pallas;
-use rand::{prelude::SliceRandom, CryptoRng, RngCore};
+use rand::{seq::SliceRandom, CryptoRng, Rng};
 use zcash_note_encryption::{note_bytes::NoteBytes, Domain};
 
 use crate::{
@@ -424,7 +424,7 @@ impl SpendInfo {
     /// Defined in [Zcash Protocol Spec § 4.8.3: Dummy Notes (Orchard)][orcharddummynotes].
     ///
     /// [orcharddummynotes]: https://zips.z.cash/protocol/nu5.pdf#orcharddummynotes
-    fn dummy(note_version: NoteVersion, rng: &mut impl RngCore) -> Self {
+    fn dummy(note_version: NoteVersion, rng: &mut impl Rng) -> Self {
         let (sk, fvk, note) = Note::dummy(rng, None, note_version);
         let merkle_path = Some(MerklePath::dummy(rng));
 
@@ -460,7 +460,7 @@ impl SpendInfo {
 
     /// Creates a split spend for a custom-asset output-only action.
     #[cfg(feature = "zsa")]
-    fn create_split_spend(&self, rng: &mut impl RngCore) -> Self {
+    fn create_split_spend(&self, rng: &mut impl Rng) -> Self {
         SpendInfo {
             dummy_sk: None,
             fvk: self.fvk.clone(),
@@ -478,7 +478,7 @@ impl SpendInfo {
     /// [orchardsend]: https://zips.z.cash/protocol/nu5.pdf#orchardsend
     fn build(
         &self,
-        mut rng: impl RngCore,
+        mut rng: impl Rng,
     ) -> (
         Nullifier,
         SpendValidatingKey,
@@ -493,7 +493,7 @@ impl SpendInfo {
         (nf_old, ak, alpha, rk)
     }
 
-    fn into_pczt(self, rng: impl RngCore) -> crate::pczt::Spend {
+    fn into_pczt(self, rng: impl Rng) -> crate::pczt::Spend {
         let (nf_old, _, alpha, rk) = self.build(rng);
 
         crate::pczt::Spend {
@@ -639,7 +639,7 @@ impl<D: DomainExt> OutputInfo<D> {
     /// Defined in [Zcash Protocol Spec § 4.8.3: Dummy Notes (Orchard)][orcharddummynotes].
     ///
     /// [orcharddummynotes]: https://zips.z.cash/protocol/nu5.pdf#orcharddummynotes
-    pub fn dummy(note_version: NoteVersion, asset: AssetBase, rng: &mut impl RngCore) -> Self {
+    pub fn dummy(note_version: NoteVersion, asset: AssetBase, rng: &mut impl Rng) -> Self {
         let fvk: FullViewingKey = (&SpendingKey::random(rng)).into();
         let recipient = fvk.address_at(0u32, Scope::External);
 
@@ -662,7 +662,7 @@ impl<D: DomainExt> OutputInfo<D> {
         &self,
         cv_net: &ValueCommitment,
         nf_old: Nullifier,
-        mut rng: impl RngCore,
+        mut rng: impl Rng,
     ) -> (Note, ExtractedNoteCommitment, TransmittedNoteCiphertext<D>) {
         let rho = Rho::from_nf_old(nf_old);
         #[cfg(feature = "zsa")]
@@ -711,7 +711,7 @@ impl<D: DomainExt> OutputInfo<D> {
         self,
         cv_net: &ValueCommitment,
         nf_old: Nullifier,
-        rng: impl RngCore,
+        rng: impl Rng,
     ) -> crate::pczt::Output<D> {
         let (note, cmx, encrypted_note) = self.build(cv_net, nf_old, rng);
 
@@ -820,7 +820,7 @@ struct ActionInfo<D: Domain> {
 }
 
 impl<D: DomainExt> ActionInfo<D> {
-    fn new(spend: SpendInfo, output: OutputInfo<D>, rng: impl RngCore) -> Self {
+    fn new(spend: SpendInfo, output: OutputInfo<D>, rng: impl Rng) -> Self {
         ActionInfo {
             spend,
             output,
@@ -847,7 +847,7 @@ impl<D: DomainExt> ActionInfo<D> {
     #[cfg(feature = "circuit")]
     fn build(
         self,
-        mut rng: impl RngCore,
+        mut rng: impl Rng,
         circuit_version: OrchardCircuitVersion,
     ) -> (Action<SigningMetadata, D>, Circuit) {
         let v_net = self.value_sum();
@@ -883,7 +883,7 @@ impl<D: DomainExt> ActionInfo<D> {
         )
     }
 
-    fn build_for_pczt(self, mut rng: impl RngCore) -> crate::pczt::Action<D> {
+    fn build_for_pczt(self, mut rng: impl Rng) -> crate::pczt::Action<D> {
         let v_net = self.value_sum();
         let cv_net =
             ValueCommitment::derive_with_asset(v_net, self.rcv.clone(), self.spend.note.asset());
@@ -1372,7 +1372,7 @@ impl<D: DomainExt> Builder<D> {
     #[allow(clippy::type_complexity)]
     pub fn build<V: TryFrom<i64>>(
         self,
-        rng: impl RngCore,
+        rng: impl Rng,
     ) -> Result<Option<(UnauthorizedBundle<V, D>, BundleMetadata)>, BuildError> {
         // An in-memory bundle proves against its anchor immediately; a deferred-anchor
         // bundle has none, so it can only be built for a PCZT.
@@ -1396,7 +1396,7 @@ impl<D: DomainExt> Builder<D> {
     /// metadata, for inclusion in a PCZT.
     pub fn build_for_pczt(
         self,
-        rng: impl RngCore,
+        rng: impl Rng,
     ) -> Result<(crate::pczt::Bundle<D>, BundleMetadata), BuildError> {
         // The PCZT bundle's `anchor` field is required (public API), so a deferred-anchor
         // bundle carries the empty-tree root purely as a placeholder alongside the
@@ -1455,7 +1455,7 @@ impl<D: DomainExt> Builder<D> {
 #[allow(clippy::too_many_arguments)]
 #[cfg(feature = "circuit")]
 pub fn bundle<V: TryFrom<i64>>(
-    rng: impl RngCore,
+    rng: impl Rng,
     bundle_type: BundleType,
     bundle_version: BundleVersion,
     flags: Flags,
@@ -1480,7 +1480,7 @@ pub fn bundle<V: TryFrom<i64>>(
 #[allow(clippy::type_complexity)]
 #[cfg(feature = "circuit")]
 fn bundle_with_domain<V: TryFrom<i64>, D: DomainExt>(
-    rng: impl RngCore,
+    rng: impl Rng,
     bundle_type: BundleType,
     bundle_version: BundleVersion,
     flags: Flags,
@@ -1514,7 +1514,7 @@ fn bundle_with_domain<V: TryFrom<i64>, D: DomainExt>(
 
 #[cfg(feature = "circuit")]
 #[allow(clippy::type_complexity)]
-fn finish_unauthorized_bundle<V: TryFrom<i64>, D: DomainExt, R: RngCore>(
+fn finish_unauthorized_bundle<V: TryFrom<i64>, D: DomainExt, R: Rng>(
     pre_actions: Vec<ActionInfo<D>>,
     flags: Flags,
     value_balance: ValueSum,
@@ -1578,7 +1578,7 @@ fn align_spends_and_outputs<D: DomainExt>(
     outputs: Vec<(OutputInfo<D>, MetadataIdx)>,
     asset: AssetBase,
     note_version: NoteVersion,
-    rng: &mut impl RngCore,
+    rng: &mut impl Rng,
 ) -> Vec<((SpendInfo, MetadataIdx), (OutputInfo<D>, MetadataIdx))> {
     let num_actions = spends.len().max(outputs.len());
     let first_spend = spends.first().map(|(spend, _)| spend.clone());
@@ -1611,7 +1611,7 @@ fn pad_spend(
     spend: Option<&SpendInfo>,
     asset: AssetBase,
     note_version: NoteVersion,
-    rng: &mut impl RngCore,
+    rng: &mut impl Rng,
 ) -> Result<SpendInfo, BuildError> {
     if asset.is_zatoshi().into() {
         Ok(SpendInfo::dummy(note_version, rng))
@@ -1631,7 +1631,7 @@ fn pad_spend(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn build_bundle<D: DomainExt, B, R: RngCore>(
+fn build_bundle<D: DomainExt, B, R: Rng>(
     mut rng: R,
     bundle_version: BundleVersion,
     flags: Flags,
@@ -1944,7 +1944,7 @@ impl<S: InProgressSignatures> InProgress<Unproven, S> {
         &self,
         pk: &ProvingKey,
         instances: &[Instance],
-        rng: impl RngCore,
+        rng: impl Rng,
     ) -> Result<Proof, halo2_proofs::plonk::Error> {
         Proof::create(pk, &self.proof.circuits, instances, rng)
     }
@@ -1972,7 +1972,7 @@ impl<S: InProgressSignatures, V> Bundle<InProgress<Unproven, S>, V> {
     pub fn create_proof(
         self,
         pk: &ProvingKey,
-        mut rng: impl RngCore,
+        mut rng: impl Rng,
     ) -> Result<Bundle<InProgress<Proof, S>, V>, BuildError> {
         let instances: Vec<_> = self
             .actions()
@@ -2060,7 +2060,7 @@ impl<P: fmt::Debug, V> Bundle<InProgress<P, Unauthorized>, V> {
     /// Loads the sighash into this bundle, preparing it for signing.
     ///
     /// This API ensures that all signatures are created over the same sighash.
-    pub fn prepare<R: RngCore + CryptoRng>(
+    pub fn prepare<R: Rng + CryptoRng>(
         self,
         mut rng: R,
         sighash: [u8; 32],
@@ -2090,7 +2090,7 @@ impl<V> Bundle<InProgress<Proof, Unauthorized>, V> {
     ///
     /// This is a helper method that wraps [`Bundle::prepare`], [`Bundle::sign`], and
     /// [`Bundle::finalize`].
-    pub fn apply_signatures<R: RngCore + CryptoRng>(
+    pub fn apply_signatures<R: Rng + CryptoRng>(
         self,
         mut rng: R,
         sighash: [u8; 32],
@@ -2109,7 +2109,7 @@ impl<P: fmt::Debug, V> Bundle<InProgress<P, PartiallyAuthorized>, V> {
     /// Signs this bundle with the given [`SpendAuthorizingKey`].
     ///
     /// This will apply signatures for all notes controlled by this spending key.
-    pub fn sign<R: RngCore + CryptoRng>(self, mut rng: R, ask: &SpendAuthorizingKey) -> Self {
+    pub fn sign<R: Rng + CryptoRng>(self, mut rng: R, ask: &SpendAuthorizingKey) -> Self {
         let expected_ak = ask.into();
         self.map_authorization(
             &mut rng,
@@ -2233,7 +2233,7 @@ pub mod testing {
     use core::fmt::Debug;
 
     use incrementalmerkletree::{frontier::Frontier, Hashable, Level};
-    use rand::{rngs::StdRng, CryptoRng, SeedableRng};
+    use rand::{rngs::StdRng, CryptoRng, Rng, SeedableRng};
 
     use proptest::collection::vec;
     use proptest::prelude::*;
@@ -2270,7 +2270,20 @@ pub mod testing {
         output_amounts: Vec<(Address, NoteValue)>,
     }
 
-    impl<R: RngCore + CryptoRng> ArbitraryBundleInputs<R> {
+    fn fixed_proving_key() -> &'static ProvingKey {
+        #[cfg(test)]
+        {
+            crate::cached_test_keys(OrchardCircuitVersion::FixedPostNu6_2).proving_key()
+        }
+
+        #[cfg(not(test))]
+        {
+            static PROVING_KEY: std::sync::OnceLock<ProvingKey> = std::sync::OnceLock::new();
+            PROVING_KEY.get_or_init(|| ProvingKey::build(OrchardCircuitVersion::FixedPostNu6_2))
+        }
+    }
+
+    impl<R: Rng + CryptoRng> ArbitraryBundleInputs<R> {
         /// Create a bundle from the set of arbitrary bundle inputs.
         fn into_bundle<V: TryFrom<i64>>(mut self) -> Bundle<Authorized, V> {
             let fvk = FullViewingKey::from(&self.sk);
@@ -2296,13 +2309,13 @@ pub mod testing {
                     .unwrap();
             }
 
-            let pk = ProvingKey::build(OrchardCircuitVersion::FixedPostNu6_2);
+            let pk = fixed_proving_key();
             builder
                 .build(&mut self.rng)
                 .unwrap()
                 .unwrap()
                 .0
-                .create_proof(&pk, &mut self.rng)
+                .create_proof(pk, &mut self.rng)
                 .unwrap()
                 .prepare(&mut self.rng, [0; 32])
                 .sign(&mut self.rng, &SpendAuthorizingKey::from(&self.sk))
@@ -2353,7 +2366,7 @@ pub mod testing {
 
             ArbitraryBundleInputs {
                 rng: StdRng::from_seed(rng_seed),
-                sk,
+                sk: sk.clone(),
                 anchor: frontier.root().into(),
                 notes: notes_and_auth_paths,
                 output_amounts
@@ -2517,8 +2530,11 @@ pub mod testing {
 #[cfg(all(test, feature = "circuit"))]
 mod tests {
     use proptest::prelude::*;
-    use rand::rngs::{OsRng, StdRng};
-    use rand::{RngCore, SeedableRng};
+    use rand::{
+        rand_core::UnwrapErr,
+        rngs::{StdRng, SysRng},
+        Rng, SeedableRng,
+    };
 
     use super::{
         bundle, testing, BuildError, Builder, ChangeInfo, MaybeSigned, OutputError, OutputInfo,
@@ -2527,7 +2543,7 @@ mod tests {
     use crate::{
         builder::{BundleType, SpendError},
         bundle::{Authorized, Bundle, BundleVersion, Flags, TxVersion},
-        circuit::{OrchardCircuitVersion, ProvingKey},
+        circuit::OrchardCircuitVersion,
         constants::MERKLE_DEPTH_ORCHARD,
         keys::{
             FullViewingKey, PreparedIncomingViewingKey, Scope, SpendAuthorizingKey, SpendingKey,
@@ -2542,7 +2558,7 @@ mod tests {
     use zcash_note_encryption::try_note_decryption;
 
     fn note_with_path(
-        rng: &mut impl RngCore,
+        rng: &mut impl Rng,
         recipient: Address,
         value: NoteValue,
         note_version: NoteVersion,
@@ -2664,7 +2680,7 @@ mod tests {
     #[test]
     #[cfg(feature = "circuit")]
     fn deferred_anchor_refuses_in_memory_build() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let sk = SpendingKey::random(&mut rng);
         let fvk = FullViewingKey::from(&sk);
         let recipient = fvk.address_at(0u32, Scope::External);
@@ -2760,7 +2776,7 @@ mod tests {
     /// must first be installed via the Updater (`set_anchor`).
     #[test]
     fn deferred_anchor_prover_rejects_uninstalled_anchor() {
-        let pk = ProvingKey::build(OrchardCircuitVersion::FixedPostNu6_2);
+        let pk = crate::cached_test_keys(OrchardCircuitVersion::FixedPostNu6_2).proving_key();
         proptest!(|(
             (sk, note, _merkle_path, _anchor) in testing::arb_spendable_note(
                 NoteValue::from_raw(10_000),
@@ -2788,7 +2804,7 @@ mod tests {
 
             prop_assert!(bundle.anchor_deferred);
             prop_assert!(matches!(
-                bundle.create_proof(&pk, &mut build_rng),
+                bundle.create_proof(pk, &mut build_rng),
                 Err(ProverError::AnchorDeferred)
             ));
         });
@@ -2889,7 +2905,7 @@ mod tests {
     /// Creates a builder with the given `bundle_version` and `bundle_type` over the
     /// empty-tree anchor, with a single 5000-zat output to a freshly derived external address.
     fn output_only_builder(
-        rng: &mut impl RngCore,
+        rng: &mut impl Rng,
         bundle_version: BundleVersion,
         bundle_type: BundleType,
     ) -> Builder {
@@ -2923,8 +2939,8 @@ mod tests {
 
     #[test]
     fn shielding_bundle() {
-        let pk = ProvingKey::build(OrchardCircuitVersion::FixedPostNu6_2);
-        let mut rng = OsRng;
+        let pk = crate::cached_test_keys(OrchardCircuitVersion::FixedPostNu6_2).proving_key();
+        let mut rng = UnwrapErr(SysRng);
 
         let builder =
             output_only_builder(&mut rng, BundleVersion::orchard_v2(), BundleType::DEFAULT);
@@ -2936,7 +2952,7 @@ mod tests {
             .unwrap()
             .unwrap()
             .0
-            .create_proof(&pk, &mut rng)
+            .create_proof(pk, &mut rng)
             .unwrap()
             .prepare(rng, [0; 32])
             .finalize()
@@ -2946,7 +2962,7 @@ mod tests {
 
     #[test]
     fn coinbase_bundle_builds_for_post_nu6_3() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
 
         // Coinbase bundles disable nonzero-valued spends. From NU6.3, consensus requires
         // nActionsOrchard = 0 in a v5+ coinbase transaction (v4, still valid after NU6.3,
@@ -3000,7 +3016,7 @@ mod tests {
 
     #[test]
     fn free_bundle_rejects_coinbase_spends_enabled() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let anchor: Anchor = EMPTY_ROOTS[MERKLE_DEPTH_ORCHARD].into();
         let bundle_version = BundleVersion::ironwood_v3();
 
@@ -3037,7 +3053,7 @@ mod tests {
 
     #[test]
     fn cross_address_disabled_builder_pairs_actions() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let spend_sk = SpendingKey::random(&mut rng);
         let spend_fvk = FullViewingKey::from(&spend_sk);
         let spend_recipient = spend_fvk.address_at(0u32, Scope::External);
@@ -3147,7 +3163,7 @@ mod tests {
     #[test]
     fn cross_address_disabled_spend_output_randomization_depends_on_scope() {
         fn spend_paired_output_decrypts(spend_scope: Scope) -> bool {
-            let mut rng = OsRng;
+            let mut rng = UnwrapErr(SysRng);
             let spend_sk = SpendingKey::random(&mut rng);
             let spend_fvk = FullViewingKey::from(&spend_sk);
             let spend_recipient = spend_fvk.address_at(0u32, spend_scope);
@@ -3184,7 +3200,7 @@ mod tests {
 
     #[test]
     fn cross_address_disabled_padding_pairs_dummy_addresses() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let sk = SpendingKey::random(&mut rng);
         let fvk = FullViewingKey::from(&sk);
         let recipient = fvk.address_at(0u32, Scope::Internal);
@@ -3224,7 +3240,7 @@ mod tests {
 
     #[test]
     fn cross_address_disabled_rejects_non_change_outputs() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let sk = SpendingKey::random(&mut rng);
         let fvk = FullViewingKey::from(&sk);
         let recipient = fvk.address_at(0u32, Scope::External);
@@ -3278,7 +3294,7 @@ mod tests {
 
     #[test]
     fn cross_address_disabled_rejects_spends_disabled_outputs() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let sk = SpendingKey::random(&mut rng);
         let fvk = FullViewingKey::from(&sk);
         let recipient = fvk.address_at(0u32, Scope::Internal);
@@ -3321,7 +3337,7 @@ mod tests {
 
     #[test]
     fn builder_note_version_checks_apply_to_outputs_only() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let sk = SpendingKey::random(&mut rng);
         let fvk = FullViewingKey::from(&sk);
         let recipient = fvk.address_at(0u32, Scope::External);
@@ -3409,7 +3425,7 @@ mod tests {
 
     #[test]
     fn add_change_output_validates_ownership_when_unrestricted() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let fvk = FullViewingKey::from(&SpendingKey::random(&mut rng));
         let owned = fvk.address_at(0u32, Scope::Internal);
         let foreign =
@@ -3444,7 +3460,7 @@ mod tests {
 
     #[test]
     fn add_change_output_rejects_spends_disabled_eagerly() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let fvk = FullViewingKey::from(&SpendingKey::random(&mut rng));
         let recipient = fvk.address_at(0u32, Scope::Internal);
 
@@ -3478,7 +3494,7 @@ mod tests {
 
     #[test]
     fn cross_address_disabled_non_pczt_signing_flow() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let spend_sk = SpendingKey::random(&mut rng);
         let spend_fvk = FullViewingKey::from(&spend_sk);
         let spend_recipient = spend_fvk.address_at(0u32, Scope::External);
@@ -3567,8 +3583,8 @@ mod tests {
 
     #[test]
     fn restricted_pczt_structural_checks_reject_tampering() {
-        let pk = ProvingKey::build(OrchardCircuitVersion::PostNu6_3);
-        let mut rng = OsRng;
+        let pk = crate::cached_test_keys(OrchardCircuitVersion::PostNu6_3).proving_key();
+        let mut rng = UnwrapErr(SysRng);
         let spend_sk = SpendingKey::random(&mut rng);
         let spend_fvk = FullViewingKey::from(&spend_sk);
         let spend_recipient = spend_fvk.address_at(0u32, Scope::External);
@@ -3603,7 +3619,7 @@ mod tests {
 
         let (mut pczt_bundle, _) = builder.build_for_pczt(&mut rng).unwrap();
         pczt_bundle.verify_cross_address_restriction().unwrap();
-        pczt_bundle.create_proof(&pk, rng).unwrap();
+        pczt_bundle.create_proof(pk, rng).unwrap();
 
         let spend_recipient = pczt_bundle.actions()[0].spend.recipient.unwrap();
         let other_recipient = loop {
@@ -3620,7 +3636,7 @@ mod tests {
             Err(VerifyError::DisallowedCrossAddressTransfer)
         ));
         assert!(matches!(
-            pczt_bundle.create_proof(&pk, rng),
+            pczt_bundle.create_proof(pk, rng),
             Err(ProverError::DisallowedCrossAddressTransfer(_))
         ));
     }
@@ -3633,7 +3649,7 @@ mod tests {
         // is rejected as a circuit-version mismatch. The lower-level interlock that rejects
         // a restricted *instance* under an unsupporting key is covered by
         // `circuit::tests::restricted_statement_requires_supporting_key`.
-        let build_restricted = |rng: &mut OsRng| {
+        let build_restricted = |rng: &mut UnwrapErr<SysRng>| {
             Builder::new(
                 transactional(true),
                 BundleVersion::orchard_v3(),
@@ -3647,16 +3663,16 @@ mod tests {
             .0
         };
 
-        let mut rng = OsRng;
-        let pk = ProvingKey::build(OrchardCircuitVersion::FixedPostNu6_2);
+        let mut rng = UnwrapErr(SysRng);
+        let pk = crate::cached_test_keys(OrchardCircuitVersion::FixedPostNu6_2).proving_key();
         let bundle = build_restricted(&mut rng);
         assert!(matches!(
-            bundle.create_proof(&pk, &mut rng),
+            bundle.create_proof(pk, &mut rng),
             Err(BuildError::Proof(halo2_proofs::plonk::Error::Synthesis)),
         ));
 
-        let pk = ProvingKey::build(OrchardCircuitVersion::PostNu6_3);
+        let pk = crate::cached_test_keys(OrchardCircuitVersion::PostNu6_3).proving_key();
         let bundle = build_restricted(&mut rng);
-        bundle.create_proof(&pk, &mut rng).unwrap();
+        bundle.create_proof(pk, &mut rng).unwrap();
     }
 }

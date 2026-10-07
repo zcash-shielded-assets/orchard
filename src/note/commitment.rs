@@ -10,6 +10,7 @@ use core::iter;
 
 use bitvec::{array::BitArray, order::Lsb0};
 use group::ff::{PrimeField, PrimeFieldBits};
+use lazy_static::lazy_static;
 use pasta_curves::pallas;
 use subtle::{ConstantTimeEq, CtOption};
 
@@ -25,6 +26,14 @@ use crate::constants::fixed_bases::NOTE_ZSA_COMMITMENT_PERSONALIZATION;
 use crate::note::AssetBase;
 #[cfg(feature = "zsa")]
 use subtle::ConditionallySelectable;
+lazy_static! {
+    static ref NOTE_COMMITMENT_DOMAIN: sinsemilla::CommitDomain =
+        sinsemilla::CommitDomain::new(NOTE_COMMITMENT_PERSONALIZATION);
+}
+
+fn note_commitment_domain() -> &'static sinsemilla::CommitDomain {
+    &NOTE_COMMITMENT_DOMAIN
+}
 
 /// The trapdoor for a note commitment.
 #[derive(Clone, Debug)]

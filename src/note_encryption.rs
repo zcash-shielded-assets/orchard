@@ -6,11 +6,11 @@ use core::fmt;
 use blake2b_simd::{Hash, Params};
 use group::ff::PrimeField;
 use zcash_note_encryption::{
-    note_bytes::{NoteBytes, NoteBytesData},
-    BatchDomain, Domain, EphemeralKeyBytes, NotePlaintextBytes, OutPlaintextBytes,
-    OutgoingCipherKey, ShieldedOutput, COMPACT_NOTE_SIZE, ENC_CIPHERTEXT_SIZE, NOTE_PLAINTEXT_SIZE,
-    OUT_PLAINTEXT_SIZE,
+    note_bytes::NoteBytes, BatchDomain, Domain, EphemeralKeyBytes, OutPlaintextBytes,
+    OutgoingCipherKey, ShieldedOutput, AEAD_TAG_SIZE, OUT_PLAINTEXT_SIZE,
 };
+
+pub use zcash_note_encryption::note_bytes::NoteBytesData;
 
 use crate::{
     action::Action,
@@ -22,6 +22,28 @@ use crate::{
     value::{NoteValue, ValueCommitment},
     Address, Note,
 };
+
+/// The size of the compact part of an Orchard note plaintext.
+///
+/// This is the prefix of the note plaintext that light clients receive, and
+/// covers every field except the memo.
+pub const COMPACT_NOTE_SIZE: usize = 1 + // version lead byte
+    11 + // diversifier
+    8 +  // value
+    32; // rseed
+/// The size of a full Orchard note plaintext.
+pub const NOTE_PLAINTEXT_SIZE: usize = COMPACT_NOTE_SIZE + 512; // memo
+/// The size of an encrypted Orchard note plaintext.
+pub const ENC_CIPHERTEXT_SIZE: usize = NOTE_PLAINTEXT_SIZE + AEAD_TAG_SIZE;
+
+/// The byte encoding of an Orchard note plaintext.
+pub type NotePlaintextBytes = NoteBytesData<NOTE_PLAINTEXT_SIZE>;
+/// The byte encoding of an encrypted Orchard note plaintext.
+pub type NoteCiphertextBytes = NoteBytesData<ENC_CIPHERTEXT_SIZE>;
+/// The byte encoding of the compact part of an Orchard note plaintext.
+pub type CompactNotePlaintextBytes = NoteBytesData<COMPACT_NOTE_SIZE>;
+/// The byte encoding of the compact part of an encrypted Orchard note plaintext.
+pub type CompactNoteCiphertextBytes = NoteBytesData<COMPACT_NOTE_SIZE>;
 
 const PRF_OCK_ORCHARD_PERSONALIZATION: &[u8; 16] = b"Zcash_Orchardock";
 
@@ -350,12 +372,6 @@ impl<P: DomainPolicy> Domain for NoteEncryptionDomain<P> {
         ))
     }
 
-    fn extract_memo(&self, plaintext: &NotePlaintextBytes) -> Self::Memo {
-        plaintext.0[COMPACT_NOTE_SIZE..NOTE_PLAINTEXT_SIZE]
-            .try_into()
-            .unwrap()
-    }
-
     fn extract_pk_d(out_plaintext: &OutPlaintextBytes) -> Option<Self::DiversifiedTransmissionKey> {
         DiversifiedTransmissionKey::from_bytes(out_plaintext.0[0..32].try_into().unwrap()).into()
     }
@@ -416,6 +432,15 @@ fn batch_kdf<'a>(
             secret.map(|dhsecret| SharedSecret::kdf_orchard_inner(dhsecret, ephemeral_key))
         })
         .collect()
+}
+
+/// Truncates a full note ciphertext to the compact part that light clients receive.
+fn compact_ciphertext(enc_ciphertext: &NoteCiphertextBytes) -> CompactNoteCiphertextBytes {
+    NoteBytesData(
+        enc_ciphertext.0[..COMPACT_NOTE_SIZE]
+            .try_into()
+            .expect("COMPACT_NOTE_SIZE <= ENC_CIPHERTEXT_SIZE"),
+    )
 }
 
 impl<P: DomainPolicy, T> ShieldedOutput<NoteEncryptionDomain<P>> for Action<T> {
@@ -582,7 +607,7 @@ impl CompactAction {
 /// Utilities for constructing test data.
 #[cfg(feature = "test-dependencies")]
 pub mod testing {
-    use rand::RngCore;
+    use rand::Rng;
     use zcash_note_encryption::Domain;
 
     use super::{CompactAction, OrchardDomain, OrchardNoteEncryption};
@@ -596,7 +621,7 @@ pub mod testing {
     /// Creates a fake `CompactAction` paying the given recipient the specified value.
     ///
     /// Returns the `CompactAction` and the new note.
-    pub fn fake_compact_action<R: RngCore>(
+    pub fn fake_compact_action<R: Rng>(
         rng: &mut R,
         nf_old: Nullifier,
         recipient: Address,
@@ -644,7 +669,7 @@ pub mod testing {
 mod tests {
     use alloc::vec::Vec;
 
-    use rand::rngs::OsRng;
+    use rand::{rand_core::UnwrapErr, rngs::SysRng};
     use zcash_note_encryption::{
         batch, try_compact_note_decryption, try_note_decryption, try_output_recovery_with_ovk,
         BatchDomain, Domain, EphemeralKeyBytes, NoteEncryption,
@@ -652,7 +677,7 @@ mod tests {
 
     use super::{
         prf_ock_orchard, CompactAction, DomainVersion, IronwoodDomain, IronwoodNoteEncryption,
-        IronwoodVersion, NoteEncryptionDomain, OrchardDomain, OrchardNoteEncryption,
+        IronwoodVersion, NoteBytesData, NoteEncryptionDomain, OrchardDomain, OrchardNoteEncryption,
         OrchardVersion,
     };
     use crate::{
@@ -669,7 +694,6 @@ mod tests {
         value::{NoteValue, ValueCommitTrapdoor, ValueCommitment, ValueSum},
         Address, Note,
     };
-    use zcash_note_encryption::note_bytes::NoteBytesData;
 
     fn v3_encrypted_action() -> (
         Action<()>,
@@ -678,7 +702,7 @@ mod tests {
         Address,
         [u8; 512],
     ) {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let sk = SpendingKey::random(&mut rng);
         let fvk = crate::keys::FullViewingKey::from(&sk);
         let incoming_viewing_key = fvk.to_ivk(Scope::External);
@@ -828,7 +852,7 @@ mod tests {
 
             assert_eq!(ne.encrypt_note_plaintext().as_ref(), &tv.c_enc[..]);
             assert_eq!(
-                &ne.encrypt_outgoing_plaintext(&cv_net, &cmx, &mut OsRng)[..],
+                &ne.encrypt_outgoing_plaintext(&cv_net, &cmx, &mut UnwrapErr(SysRng))[..],
                 &tv.c_out[..]
             );
         }
@@ -836,7 +860,7 @@ mod tests {
 
     #[test]
     fn domains_accept_only_their_note_plaintext_versions() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let sk = crate::keys::SpendingKey::random(&mut rng);
         let fvk = crate::keys::FullViewingKey::from(&sk);
         let recipient = fvk.address_at(0u32, crate::keys::Scope::External);
@@ -860,8 +884,14 @@ mod tests {
         let orchard_domain = OrchardDomain::from_rho(rho);
         let ironwood_domain = IronwoodDomain::from_rho(rho);
 
-        let np_v2 = OrchardDomain::note_plaintext_bytes(&note_v2, &memo);
-        let np_v3 = IronwoodDomain::note_plaintext_bytes(&note_v3, &memo);
+        let np_v2 = orchard_domain
+            .split_plaintext_at_memo(&OrchardDomain::note_plaintext_bytes(&note_v2, &memo))
+            .expect("a well-formed note plaintext splits at the memo")
+            .0;
+        let np_v3 = ironwood_domain
+            .split_plaintext_at_memo(&IronwoodDomain::note_plaintext_bytes(&note_v3, &memo))
+            .expect("a well-formed note plaintext splits at the memo")
+            .0;
         let pk_d = recipient.pk_d();
 
         assert_eq!(
@@ -918,7 +948,7 @@ mod tests {
     /// Encrypts a compact output of the domain's note plaintext version to
     /// `recipient`, using a fresh ephemeral key.
     fn encrypted_compact_action<V: DomainVersion>(
-        rng: &mut OsRng,
+        rng: &mut UnwrapErr<SysRng>,
         recipient: Address,
     ) -> CompactAction {
         let nf_old = Nullifier::dummy(rng);
@@ -946,7 +976,7 @@ mod tests {
     /// results, over hits on multiple viewing keys, misses, and an
     /// undecodable ephemeral key.
     fn check_batched_compact_decryption_matches_per_item<V: DomainVersion>() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
 
         // Two accounts with external and internal scope each — the wallet
         // shape batched trial decryption runs with — plus a foreign account
@@ -1026,7 +1056,7 @@ mod tests {
     /// alike.
     #[test]
     fn batched_agreement_matches_per_item() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
 
         let our_fvk = FullViewingKey::from(&SpendingKey::random(&mut rng));
         let foreign_fvk = FullViewingKey::from(&SpendingKey::random(&mut rng));

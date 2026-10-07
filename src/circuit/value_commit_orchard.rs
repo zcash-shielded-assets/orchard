@@ -159,7 +159,7 @@ mod tests {
     };
     use pasta_curves::pallas;
 
-    use rand::{rngs::OsRng, RngCore};
+    use rand::Rng;
 
     #[test]
     fn test_value_commit_orchard_zsa() {
@@ -352,7 +352,7 @@ mod tests {
         }
 
         // Test different circuits
-        let mut rng = OsRng;
+        let mut rng = rand_core::UnwrapErr(rand::rngs::SysRng);
         let mut circuits = vec![];
         let mut instances = vec![];
         let zatoshi_asset = AssetBase::zatoshi();

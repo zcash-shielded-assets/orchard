@@ -1331,6 +1331,7 @@ pub mod testing {
                 spends_enabled,
                 outputs_enabled,
                 cross_address_enabled,
+                #[cfg(feature = "zsa")]
                 zsa_enabled: false,
             }
         }
@@ -1936,10 +1937,10 @@ pub(crate) mod tests {
             crate::circuit::OrchardCircuitVersion::InsecurePreNu6_2,
             crate::circuit::OrchardCircuitVersion::FixedPostNu6_2,
         ] {
-            let vk = crate::circuit::VerifyingKey::build(circuit_version);
+            let vk = crate::cached_test_keys(circuit_version).verifying_key();
 
             assert!(matches!(
-                bundle.verify_proof(&vk),
+                bundle.verify_proof(vk),
                 Err(halo2_proofs::plonk::Error::InvalidInstances)
             ));
         }

@@ -1174,8 +1174,8 @@ mod tests {
     use group::{Curve, Group, GroupEncoding};
     use halo2_proofs::{circuit::Value, dev::MockProver};
     use pasta_curves::pallas;
-    use rand::{rngs::OsRng, RngCore};
-    use rand_core::CryptoRngCore;
+    use rand::Rng;
+    use rand_core::CryptoRng;
 
     use crate::{
         builder::SpendInfo,
@@ -1191,9 +1191,7 @@ mod tests {
         zsa::flavor::OrchardZSA,
     };
 
-    fn generate_dummy_circuit_instance<R: RngCore>(
-        mut rng: R,
-    ) -> (Circuit<OrchardZSA>, ZsaInstance) {
+    fn generate_dummy_circuit_instance<R: Rng>(mut rng: R) -> (Circuit<OrchardZSA>, ZsaInstance) {
         let (_, fvk, spent_note) = Note::dummy(&mut rng, None);
 
         let sender_address = spent_note.recipient();
@@ -1264,7 +1262,7 @@ mod tests {
     // TODO: recast as a proptest
     #[test]
     fn round_trip() {
-        let mut rng = OsRng;
+        let mut rng = rand_core::UnwrapErr(rand::rngs::SysRng);
 
         let (circuits, instances): (Vec<_>, Vec<_>) = iter::once(())
             .map(|()| generate_dummy_circuit_instance(&mut rng))
@@ -1391,9 +1389,10 @@ mod tests {
 
         if std::env::var_os("ORCHARD_CIRCUIT_TEST_GENERATE_NEW_PROOF").is_some() {
             let create_proof = || -> std::io::Result<()> {
-                let mut rng = OsRng;
+                let mut rng = rand_core::UnwrapErr(rand::rngs::SysRng);
 
-                let (circuit, instance) = generate_dummy_circuit_instance(OsRng);
+                let (circuit, instance) =
+                    generate_dummy_circuit_instance(rand_core::UnwrapErr(rand::rngs::SysRng));
                 let instances = &[instance.clone()];
 
                 let pk = ProvingKey::build_zsa();
@@ -1461,7 +1460,7 @@ mod tests {
         }
     }
 
-    fn generate_circuit_instance<R: CryptoRngCore>(
+    fn generate_circuit_instance<R: CryptoRng>(
         is_zatoshi_asset: bool,
         split_flag: bool,
         mut rng: R,
@@ -1578,7 +1577,7 @@ mod tests {
         )
     }
 
-    fn random_note_commitment(mut rng: impl CryptoRngCore) -> NoteCommitment {
+    fn random_note_commitment(mut rng: impl CryptoRng) -> NoteCommitment {
         NoteCommitment::derive(
             pallas::Point::random(&mut rng).to_affine().to_bytes(),
             pallas::Point::random(&mut rng).to_affine().to_bytes(),
@@ -1593,7 +1592,7 @@ mod tests {
 
     #[test]
     fn orchard_circuit_negative_test() {
-        let mut rng = OsRng;
+        let mut rng = rand_core::UnwrapErr(rand::rngs::SysRng);
 
         for (is_zatoshi_asset, split_flag) in [(true, false), (false, true), (false, false)] {
             let (circuit, instance) =

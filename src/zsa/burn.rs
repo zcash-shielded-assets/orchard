@@ -131,11 +131,10 @@ mod tests {
     use crate::{value::NoteValue, Note};
 
     use alloc::{collections::BTreeSet, vec::Vec};
-    use rand_core::OsRng;
 
     /// Generates a vector of unique random assets.
     fn generate_unique_assets(count: usize) -> Vec<AssetBase> {
-        let mut rng = OsRng;
+        let mut rng = rand_core::UnwrapErr(rand::rngs::SysRng);
         let mut used = BTreeSet::new();
 
         (0..count)
@@ -166,7 +165,7 @@ mod tests {
     fn mock_issuance_records(data: &[AssetSupply]) -> BTreeMap<AssetBase, AssetRecord> {
         use crate::zsa::reference_keys::ReferenceKeys;
 
-        let mut rng = OsRng;
+        let mut rng = rand_core::UnwrapErr(rand::rngs::SysRng);
 
         data.iter()
             .map(|AssetSupply { asset, supply }| {

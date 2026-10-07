@@ -7,7 +7,7 @@ use subtle::{Choice, ConstantTimeEq, CtOption};
 use crate::constants::fixed_bases::{VALUE_COMMITMENT_PERSONALIZATION, ZATOSHI_ASSET_BASE_V_BYTES};
 
 #[cfg(test)]
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 
 #[cfg(feature = "zsa")]
 use {
@@ -162,7 +162,7 @@ impl AssetBase {
     ///
     /// This is only used in tests.
     #[cfg(test)]
-    pub(crate) fn random(rng: &mut impl CryptoRngCore) -> Self {
+    pub(crate) fn random(rng: &mut impl CryptoRng) -> Self {
         loop {
             let random_point = pallas::Point::random(&mut *rng);
             // Extremely unlikely, but we explicitly reject the identity point.
